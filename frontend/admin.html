@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - College RAG System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 30px; text-align: center; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #555; font-weight: bold; }
+        input[type="file"], select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        select { background: white; }
+        button { width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .message { margin-top: 20px; padding: 15px; border-radius: 5px; display: none; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .nav { text-align: center; margin-bottom: 20px; }
+        .nav a { color: #4CAF50; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <h1>📚 Admin Document Upload</h1>
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="pdfFile">Select PDF Document:</label>
+                <input type="file" id="pdfFile" name="file" accept=".pdf" required>
+            </div>
+            <div class="form-group">
+                <label for="category">Document Category:</label>
+                <select id="category" name="category" required>
+                    <option value="">Select Category</option>
+                    <option value="mess_menu">Mess Menu</option>
+                    <option value="fee_structure">Fee Structure</option>
+                    <option value="timetable">Timetable</option>
+                    <option value="bus_timetable">Bus Timetable</option>
+                    <option value="canteen">Canteen</option>
+                    <option value="academic">Academic</option>
+                </select>
+            </div>
+            <button type="submit" id="submitBtn">Upload and Process Document</button>
+        </form>
+        <div id="message" class="message"></div>
+    </div>
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const btn = document.getElementById('submitBtn');
+        const msg = document.getElementById('message');
+        const formData = new FormData();
+        
+        const file = document.getElementById('pdfFile').files[0];
+        const category = document.getElementById('category').value;
+        
+        if (!file) {
+            msg.className = 'message error';
+            msg.textContent = '✗ Please select a PDF file';
+            msg.style.display = 'block';
+            return;
+        }
+        
+        formData.append('file', file);
+        formData.append('category', category);
+        
+        btn.disabled = true;
+        btn.textContent = 'Processing... (may take 30-60 seconds)';
+        msg.style.display = 'none';
+        
+        try {
+            console.log('📤 Uploading:', file.name, 'Category:', category);
+            
+            const response = await fetch('/admin/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            console.log('📥 Response status:', response.status);
+            console.log('📥 Response headers:', response.headers);
+            
+            // Get response text first
+            const responseText = await response.text();
+            console.log('📥 Response text:', responseText);
+            
+            // Try to parse as JSON
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (jsonError) {
+                console.error('❌ JSON parse error:', jsonError);
+                throw new Error(`Server returned invalid response: ${responseText.substring(0, 200)}`);
+            }
+            
+            if (response.ok) {
+                msg.className = 'message success';
+                msg.textContent = `✓ ${data.message}. Chunks created: ${data.chunks_created}`;
+                document.getElementById('uploadForm').reset();
+            } else {
+                msg.className = 'message error';
+                msg.textContent = `✗ Error: ${data.detail || data.message || 'Unknown error'}`;
+            }
+        } catch (error) {
+            console.error('❌ Upload error:', error);
+            msg.className = 'message error';
+            msg.textContent = `✗ Error: ${error.message}. Check browser console (F12) for details.`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Upload and Process Document';
+            msg.style.display = 'block';
+        }
+    });
+</script>
+
+</body>
+</html>

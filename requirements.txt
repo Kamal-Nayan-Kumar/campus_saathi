@@ -1,0 +1,17 @@
+# Install PyTorch CPU first
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.5.0+cpu
+torchvision==0.20.0+cpu
+torchaudio==2.5.0+cpu
+
+fastapi==0.118.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+google-genai==1.11.1
+llama-index-core==0.12.5
+llama-index-node-parser==0.3.3
+chromadb==0.5.20
+sentence-transformers==3.3.1
+python-dotenv==1.0.1
+pydantic==2.10.3
+httpx==0.27.2
