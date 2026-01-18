@@ -60,7 +60,7 @@ class PDFProcessor:
                 raise Exception("Gemini File Processing Failed")
 
             response = self.client.models.generate_content(
-                model="gemini-3-pro-preview",
+                model="gemini-3-flash-preview",
                 contents=[
                     pdf_file,
                     "Convert this document to Markdown."
