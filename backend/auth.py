@@ -61,31 +61,10 @@ class AuthManager:
                 'is_admin_request': (email in self.admin_emails)
             })
 
-            # 3. Request Firebase to send verification email
-            # We use the REST API 'getOobConfirmationCode' endpoint
-            url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={self.web_api_key}"
-            payload = {
-                "requestType": "VERIFY_EMAIL",
-                "idToken": self._get_id_token(uid) # We need an ID token to send verify email? No, actually we need a sign-in token.
-            }
-            
-            # Alternative: simpler flow -> send verification email via Client SDK logic?
-            # Actually, the easiest way via REST is:
-            # 1. Sign in (or sign up) to get ID Token.
-            # 2. Call sendOobCode with X-Firebase-Token?
-            
-            # Let's use the 'sendOobCode' with 'EMAIL_SIGNIN' approach? No.
-            # Standard flow:
-            # POST https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=[API_KEY]
-            # { "requestType": "VERIFY_EMAIL", "idToken": [USER_ID_TOKEN] }
-            
-            # To get ID Token without password (we just created user):
-            # We can't easily get ID Token for a user without credentials on backend.
-            # Workaround: Use Custom Token -> Exchange for ID Token -> Send Verify Email. 
-            
+            # 3. Generate ID Token via Custom Token Exchange
+            # This is required because we need to act "as the user" to trigger their verification email
             custom_token = auth.create_custom_token(uid).decode('utf-8')
             
-            # Exchange Custom Token for ID Token
             exchange_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key={self.web_api_key}"
             exchange_resp = requests.post(exchange_url, json={"token": custom_token, "returnSecureToken": True})
             
@@ -95,7 +74,7 @@ class AuthManager:
                 
             id_token = exchange_resp.json()['idToken']
             
-            # Now trigger verification email
+            # 4. Trigger verification email
             verify_url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={self.web_api_key}"
             verify_resp = requests.post(verify_url, json={
                 "requestType": "VERIFY_EMAIL",
@@ -122,7 +101,7 @@ class AuthManager:
         Called when user types /verify. Checks if email is verified in Firebase.
         """
         doc_ref = self.db.collection('otp_requests').document(str(user_telegram_id))
-        doc = doc_ref.get()
+        doc = doc_ref.get() 
         
         if not doc.exists:
             return False, "❌ No pending verification found. Send /start."
@@ -152,9 +131,8 @@ class AuthManager:
         except Exception as e:
             return False, f"❌ Error checking status: {e}"
 
-    # --- Backward Compatibility Methods (so bot code doesn't break immediately) ---
+    # --- Backward Compatibility Methods ---
     def verify_otp(self, user_telegram_id, code):
-        # We don't use codes anymore, but keeping this signature to avoid crashing if bot calls it
         return False, "❌ Please use /verify command instead of entering a code."
 
     def is_verified(self, user_telegram_id):
@@ -162,5 +140,4 @@ class AuthManager:
         return doc.exists
 
     def verify_admin(self, user_telegram_id, email):
-        # Re-route to standard logic, filtering happens inside send_otp
         return self.send_otp(user_telegram_id, email)
