@@ -12,9 +12,10 @@ class PDFProcessor:
             raise ValueError("GEMINI_API_KEY not found")
         self.client = genai.Client(api_key=api_key)
         self.db_manager = DatabaseManager()
-        # Initialize splitter (approx 512 tokens -> ~2000 chars, but safer to go lower for NVIDIA)
-        # NVIDIA limit is 512 tokens. Let's aim for 400 tokens per chunk.
-        self.splitter = SentenceSplitter(chunk_size=400, chunk_overlap=50)
+        # Initialize splitter 
+        # NVIDIA limit is 512 tokens. Lowering to 256 to provide a massive safety buffer
+        # against token estimation mismatches (tables, special chars, etc.)
+        self.splitter = SentenceSplitter(chunk_size=256, chunk_overlap=20)
 
     def process_and_ingest(self, file_path: str, filename: str):
         print(f"Processing {filename}...")
