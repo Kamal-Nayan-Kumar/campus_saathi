@@ -37,7 +37,7 @@ class QueryEngine:
             # Perform vector search using server-side vectorization
             # sort={"$":"vectorize": query} performs the similarity search
             results = collection.find(
-                sort={"$":"vectorize": query},
+                sort={"$vectorize": query},
                 limit=5,
                 projection={"content": 1}
             )
