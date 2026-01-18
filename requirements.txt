@@ -5,6 +5,7 @@ uvicorn
 # Core Framework
 python-dotenv
 nest_asyncio
+requests
 
 # Telegram
 python-telegram-bot

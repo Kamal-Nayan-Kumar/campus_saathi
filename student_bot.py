@@ -19,6 +19,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['awaiting_email'] = True
 
+async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    success, msg = auth_manager.check_verification(user_id)
+    await update.message.reply_text(msg)
+    if success:
+        context.user_data['awaiting_email'] = False
+        await update.message.reply_text("🎓 You can now ask questions!")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
@@ -28,16 +36,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get('awaiting_email'):
             success, msg = auth_manager.send_otp(user_id, text)
             await update.message.reply_text(msg)
-            if success:
-                context.user_data['awaiting_email'] = False
-                context.user_data['awaiting_otp'] = True
-            return
-
-        if context.user_data.get('awaiting_otp'):
-            success, msg = auth_manager.verify_otp(user_id, text)
-            await update.message.reply_text(msg)
-            if success:
-                context.user_data['awaiting_otp'] = False
             return
 
         await update.message.reply_text("🔒 Please verify your email first. Send /start to begin.")
@@ -65,6 +63,7 @@ def run_student_bot():
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("verify", verify_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("🎓 Student Bot Started...")

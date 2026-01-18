@@ -10,11 +10,23 @@ pdf_processor = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    if auth_manager.is_verified(user_id):
+        await update.message.reply_text("🛡️ Welcome back Admin!")
+        return
+
     await update.message.reply_text(
         "🛡️ Campus Saathi Admin Panel\n\n"
-        "Please enter your Admin Email to authenticate."
+        "Please enter your Authorized Admin Email to begin verification."
     )
     context.user_data['awaiting_email'] = True
+
+async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    success, msg = auth_manager.check_verification(user_id)
+    await update.message.reply_text(msg)
+    if success:
+        context.user_data['awaiting_email'] = False
+        await update.message.reply_text("📂 You can now upload PDF documents.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -22,20 +34,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not auth_manager.is_verified(user_id):
         if context.user_data.get('awaiting_email'):
-            success, msg = auth_manager.verify_admin(user_id, text)
+            # Trigger Firebase Verification Email
+            success, msg = auth_manager.send_otp(user_id, text) # Reuse method name but it sends link
             await update.message.reply_text(msg)
-            if success:
-                context.user_data['awaiting_email'] = False
-                context.user_data['awaiting_otp'] = True
             return
 
-        if context.user_data.get('awaiting_otp'):
-            success, msg = auth_manager.verify_otp(user_id, text)
-            await update.message.reply_text(msg)
-            if success:
-                context.user_data['awaiting_otp'] = False
-                await update.message.reply_text("✅ Admin Access Granted.\nUpload PDF documents here.")
-            return
+        await update.message.reply_text("🔒 Please verify your email first. Send /start to begin.")
         return
 
     await update.message.reply_text("Please upload a PDF file.")
@@ -80,6 +84,7 @@ def run_admin_bot():
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("verify", verify_command))
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
