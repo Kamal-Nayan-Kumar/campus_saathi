@@ -15,7 +15,10 @@ class AuthManager:
         self.sender_password = os.getenv("SENDER_PASSWORD")
         self.smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
         self.smtp_port = int(os.getenv("SMTP_PORT", 587))
-        self.admin_email = os.getenv("ADMIN_EMAIL")
+        
+        # Parse list of allowed admin emails
+        admin_emails_str = os.getenv("ADMIN_EMAILS", "")
+        self.admin_emails = [e.strip() for e in admin_emails_str.split(",") if e.strip()]
         
         # Initialize Firebase
         if not firebase_admin._apps:
@@ -112,8 +115,9 @@ class AuthManager:
         return doc.exists
 
     def verify_admin(self, user_telegram_id, email):
-        if email != self.admin_email:
-            return False, "❌ You are not authorized as an Admin."
+        # Allow any email in the list
+        if email not in self.admin_emails:
+            return False, "❌ You are not authorized as an Admin (Email not in whitelist)."
         
         otp = self.generate_otp()
         try:
