@@ -2,6 +2,7 @@ from google import genai
 from google.genai import types
 import os
 import time
+from llama_index.core.node_parser import SentenceSplitter
 from .database import DatabaseManager
 
 class PDFProcessor:
@@ -11,6 +12,9 @@ class PDFProcessor:
             raise ValueError("GEMINI_API_KEY not found")
         self.client = genai.Client(api_key=api_key)
         self.db_manager = DatabaseManager()
+        # Initialize splitter (approx 512 tokens -> ~2000 chars, but safer to go lower for NVIDIA)
+        # NVIDIA limit is 512 tokens. Let's aim for 400 tokens per chunk.
+        self.splitter = SentenceSplitter(chunk_size=400, chunk_overlap=50)
 
     def process_and_ingest(self, file_path: str, filename: str):
         print(f"Processing {filename}...")
@@ -21,18 +25,28 @@ class PDFProcessor:
         if not markdown_content:
             raise Exception("Failed to extract content from PDF")
 
-        # Step 2: Ingest to Astra DB
+        # Step 2: Chunk Content
+        chunks = self.splitter.split_text(markdown_content)
+        print(f"Split document into {len(chunks)} chunks.")
+
+        # Step 3: Ingest Chunks to Astra DB
         try:
             collection = self.db_manager.get_collection()
+            documents_to_insert = []
             
-            # Insert with server-side vectorization
-            result = collection.insert_one({
-                "content": markdown_content,
-                "filename": filename,
-                "$vectorize": markdown_content
-            })
+            for i, chunk_text in enumerate(chunks):
+                documents_to_insert.append({
+                    "content": chunk_text,
+                    "filename": filename,
+                    "chunk_index": i,
+                    "$vectorize": chunk_text
+                })
             
-            print(f"Successfully ingested {filename} into Astra DB (ID: {result.inserted_id})")
+            # Batch insert
+            if documents_to_insert:
+                result = collection.insert_many(documents_to_insert)
+                print(f"Successfully ingested {len(result.inserted_ids)} chunks from {filename} into Astra DB")
+            
             return True
         except Exception as e:
             print(f"Ingestion error: {e}")
