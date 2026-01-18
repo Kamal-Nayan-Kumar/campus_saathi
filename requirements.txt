@@ -1,3 +1,7 @@
+# Web Server (Keep-alive)
+fastapi
+uvicorn
+
 # Core Framework
 python-dotenv
 nest_asyncio
