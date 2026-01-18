@@ -2,80 +2,96 @@ from google import genai
 from google.genai import types
 import os
 import json
-from typing import Dict
+from .database import DatabaseManager
 
 class QueryEngine:
     def __init__(self):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment")
+            raise ValueError("GEMINI_API_KEY not found")
+        
         self.client = genai.Client(api_key=api_key)
-        
-    def translate_and_classify(self, user_query: str) -> Dict:
-        """
-        Step 5: Translation and Intent Recognition using Gemini 2.5 Flash
-        """
-        system_instruction = """You are a query translator and intent classifier.
+        self.db_manager = DatabaseManager()
 
-Task:
-1. Translate the query to English (if not already in English)
-2. Detect the original language of the user's query (e.g., Hindi, English, Hinglish, Telugu, Kannada, etc.)
-3. Determine the intent from: mess query, fee query, time table query, bus time table query, canteen, academic
-4. Provide a confidence score (0-1)
+    def process_query(self, user_query: str) -> str:
+        # Step 1: Translate and Detect Language
+        translation_result = self._translate_query(user_query)
+        english_query = translation_result.get("translation", user_query)
+        user_lang = translation_result.get("detected_language", "English")
+        
+        print(f"Debug: Original: {user_query}, Translated: {english_query}, Lang: {user_lang}")
 
-Output ONLY valid JSON in this format:
-{
-    "translation": "translated query in English",
-    "detected_language": "original language of user query",
-    "intent": "one of the intents",
-    "confidence_score": 0.95
-}"""
-        
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash-lite",
-            contents=[f"User Query: {user_query}"],
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.1
-            )
-        )
-        
-        result_text = response.text.strip()
-        if result_text.startswith("```"):
-            result_text = result_text[7:-3].strip()
-        elif result_text.startswith("```"):
-            result_text = result_text[3:-3].strip()
+        # Step 2: Retrieve Context from Astra DB
+        context_text = self._retrieve_context(english_query)
+
+        if not context_text:
+            return "I couldn't find any relevant documents to answer your question." if user_lang == "English" else "Mujhe koi relevant documents nahi mile."
+
+        # Step 3: Generate Final Answer in Native Language
+        return self._generate_final_answer(user_query, context_text, user_lang)
+
+    def _retrieve_context(self, query: str) -> str:
+        try:
+            collection = self.db_manager.get_collection()
             
-        return json.loads(result_text)
-    
-    def generate_answer(self, user_query: str, context_chunks: list, target_language: str = "English") -> str:
-        """
-        Step 6: Context Augmentation and Final Generation
-        """
-        context = "\n\n".join([f"Context {i+1}:\n{chunk}" for i, chunk in enumerate(context_chunks)])
-        
-        system_instruction = f"""You are a helpful college information assistant.
+            # Perform vector search using server-side vectorization
+            # sort={"$vectorize": query} performs the similarity search
+            results = collection.find(
+                sort={"$vectorize": query},
+                limit=5,
+                projection={"content": 1}
+            )
+            
+            # Extract content from results
+            documents = []
+            for doc in results:
+                if 'content' in doc:
+                    documents.append(doc['content'])
+            
+            return "\n\n".join(documents)
+            
+        except Exception as e:
+            print(f"Search error: {e}")
+            return ""
 
-Rules:
-1. Answer ONLY using the provided context
-2. If the answer is not in the context, say "I don't have information about this in the documents"
-3. Be accurate and conversational
-4. Provide your answer in {target_language}"""
+    def _translate_query(self, query: str) -> dict:
+        system_instr = """You are a translator.
+1. Detect the language of the query.
+2. Translate it to English.
+3. Return JSON: {\"translation\": \"...\", \"detected_language\": \"...\"}"""
         
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=[query],
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instr,
+                    response_mime_type="application/json"
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            print(f"Translation error: {e}")
+            return {"translation": query, "detected_language": "English"}
+
+    def _generate_final_answer(self, original_query: str, context: str, target_lang: str) -> str:
+        system_instr = f"""You are a helpful assistant for a college.
+Answer the user's question based strictly on the provided context.
+Respond in the user's detected language: {target_lang}.
+If the info is missing, say so politely in {target_lang}."""
+
         prompt = f"""Context:
 {context}
 
-User Question: {user_query}
+User Question: {original_query}
 
-Provide a clear answer based only on the context above."""
-        
+Answer:"""
+
         response = self.client.models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=[prompt],
             config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.3
+                system_instruction=system_instr
             )
         )
-        
         return response.text

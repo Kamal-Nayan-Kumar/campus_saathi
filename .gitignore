@@ -3,3 +3,5 @@ backend/__pycache__/
 chroma_db/
 .env
 myenv/
+venv/
+uploads/
