@@ -8,6 +8,7 @@ app = FastAPI()
 def read_root():
     return {"status": "ok", "service": "Campus Saathi Bot Worker"}
 
+@app.head("/health")
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
