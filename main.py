@@ -1,70 +1,110 @@
-import multiprocessing
 import os
-import signal
-import sys
 import uvicorn
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from telegram import Update
 from dotenv import load_dotenv
-from student_bot import run_student_bot
-from admin_bot import run_admin_bot
-from app import app
+
+# Import Bot Initializers
+from student_bot import init_student_app
+from admin_bot import init_admin_app
 
 load_dotenv()
 
-# Global process references for signal handling
-p1 = None
-p2 = None
+# --- Config ---
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://campus-saathi.onrender.com
+STUDENT_TOKEN = os.getenv("TELEGRAM_STUDENT_BOT_TOKEN")
+ADMIN_TOKEN = os.getenv("TELEGRAM_ADMIN_BOT_TOKEN")
 
-def start_student():
-    """Function to run the student bot."""
+# Global Apps
+student_app = None
+admin_app = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifecycle manager: 
+    1. Init bots
+    2. Set Webhooks
+    3. Run startup tasks
+    4. Clean up on shutdown
+    """
+    global student_app, admin_app
+    
+    print("🚀 Initializing Bots...")
+    
+    # 1. Initialize
+    student_app = init_student_app()
+    admin_app = init_admin_app()
+    
+    # 2. Start Apps
+    await student_app.initialize()
+    await admin_app.initialize()
+    await student_app.start()
+    await admin_app.start()
+    
+    # 3. Set Webhooks
+    if WEBHOOK_URL:
+        print(f"🔗 Setting Webhooks to base: {WEBHOOK_URL}")
+        
+        # Student Webhook
+        s_url = f"{WEBHOOK_URL}/student-webhook"
+        await student_app.bot.set_webhook(url=s_url)
+        print(f"✅ Student Webhook set: {s_url}")
+        
+        # Admin Webhook
+        a_url = f"{WEBHOOK_URL}/admin-webhook"
+        await admin_app.bot.set_webhook(url=a_url)
+        print(f"✅ Admin Webhook set: {a_url}")
+    else:
+        print("⚠️ WEBHOOK_URL not found. Bots will not receive updates unless polling is manually enabled (which it isn't).")
+
+    yield
+    
+    # 4. Shutdown
+    print("🛑 Shutting down bots...")
+    await student_app.stop()
+    await admin_app.stop()
+    await student_app.shutdown()
+    await admin_app.shutdown()
+
+# --- FastAPI App ---
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+def read_root():
+    return {"status": "ok", "service": "Campus Saathi Webhook Server"}
+
+@app.get("/health")
+@app.head("/health")
+def health_check():
+    return {"status": "healthy"}
+
+@app.post("/student-webhook")
+async def student_webhook(request: Request):
+    """Handle incoming updates for Student Bot"""
     try:
-        run_student_bot()
+        data = await request.json()
+        update = Update.de_json(data, student_app.bot)
+        await student_app.process_update(update)
+        return {"status": "ok"}
     except Exception as e:
-        print(f"Student Bot crashed: {e}")
+        print(f"❌ Student Webhook Error: {e}")
+        return {"status": "error", "detail": str(e)}
 
-def start_admin():
-    """Function to run the admin bot."""
+@app.post("/admin-webhook")
+async def admin_webhook(request: Request):
+    """Handle incoming updates for Admin Bot"""
     try:
-        run_admin_bot()
+        data = await request.json()
+        update = Update.de_json(data, admin_app.bot)
+        await admin_app.process_update(update)
+        return {"status": "ok"}
     except Exception as e:
-        print(f"Admin Bot crashed: {e}")
-
-def signal_handler(sig, frame):
-    """Handle termination signals to clean up subprocesses."""
-    print(f"\n🛑 Received signal {sig}. Shutting down bots...")
-    if p1 and p1.is_alive():
-        p1.terminate()
-        p1.join()
-    if p2 and p2.is_alive():
-        p2.terminate()
-        p2.join()
-    print("✅ Bots terminated. Exiting.")
-    sys.exit(0)
+        print(f"❌ Admin Webhook Error: {e}")
+        return {"status": "error", "detail": str(e)}
 
 if __name__ == "__main__":
-    print("🚀 Starting Campus Saathi System...")
-
-    # Register signal handlers for clean shutdown on Render
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # 1. Start Bots in separate processes
-    p1 = multiprocessing.Process(target=start_student)
-    p2 = multiprocessing.Process(target=start_admin)
-    
-    p1.start()
-    p2.start()
-    
-    # 2. Start Web Server
     port = int(os.getenv("PORT", 8000))
-    print(f"🌍 Web Server starting on port {port}...")
-    
-    try:
-        # Run uvicorn (Web Server)
-        uvicorn.run(app, host="0.0.0.0", port=port)
-    except Exception as e:
-        print(f"Web Server Error: {e}")
-    finally:
-        # Fallback cleanup
-        print("🧹 Performing final cleanup...")
-        if p1 and p1.is_alive(): p1.terminate()
-        if p2 and p2.is_alive(): p2.terminate()
+    # Note: On Render, 'uvicorn' command in Procfile is preferred, but this allows python main.py too
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

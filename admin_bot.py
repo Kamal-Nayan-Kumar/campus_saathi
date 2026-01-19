@@ -34,8 +34,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not auth_manager.is_verified(user_id):
         if context.user_data.get('awaiting_email'):
-            # Trigger Firebase Verification Email
-            success, msg = auth_manager.send_otp(user_id, text) # Reuse method name but it sends link
+            success, msg = auth_manager.send_otp(user_id, text)
             await update.message.reply_text(msg)
             return
 
@@ -76,11 +75,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
-def run_admin_bot():
+def init_admin_app():
+    """Initializes and returns the Admin Bot Application."""
     token = os.getenv("TELEGRAM_ADMIN_BOT_TOKEN")
     if not token:
-        print("Error: Admin Bot Token missing")
-        return
+        raise ValueError("TELEGRAM_ADMIN_BOT_TOKEN missing")
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
@@ -88,5 +87,4 @@ def run_admin_bot():
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🛡️ Admin Bot Started...")
-    app.run_polling()
+    return app

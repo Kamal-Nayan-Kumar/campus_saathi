@@ -1,5 +1,4 @@
 import os
-import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from backend.auth import AuthManager
@@ -55,16 +54,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error: {e}")
         await status_msg.edit_text("Sorry, I encountered an error processing your request.")
 
-def run_student_bot():
+def init_student_app():
+    """Initializes and returns the Student Bot Application."""
     token = os.getenv("TELEGRAM_STUDENT_BOT_TOKEN")
     if not token:
-        print("Error: Student Bot Token missing")
-        return
+        raise ValueError("TELEGRAM_STUDENT_BOT_TOKEN missing")
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("verify", verify_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🎓 Student Bot Started...")
-    app.run_polling()
+    return app
