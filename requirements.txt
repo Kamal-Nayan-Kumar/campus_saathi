@@ -15,6 +15,9 @@ google-genai
 llama-index
 llama-index-llms-gemini
 llama-index-vector-stores-astra-db
+# For GitHub Models / Azure
+azure-ai-inference
+azure-core
 
 # Database
 astrapy>=1.0.0
