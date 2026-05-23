@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from backend.auth import AuthManager
 from backend.query_engine import QueryEngine
 
-auth_manager = AuthManager()
+auth_manager = None
 query_engine = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,6 +56,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def init_student_app():
     """Initializes and returns the Student Bot Application."""
+    global auth_manager
+    auth_manager = AuthManager()
+
     token = os.getenv("TELEGRAM_STUDENT_BOT_TOKEN")
     if not token:
         raise ValueError("TELEGRAM_STUDENT_BOT_TOKEN missing")

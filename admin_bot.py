@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from backend.auth import AuthManager
 from backend.pdf_processor import PDFProcessor
 
-auth_manager = AuthManager()
+auth_manager = None
 pdf_processor = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,6 +77,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def init_admin_app():
     """Initializes and returns the Admin Bot Application."""
+    global auth_manager
+    auth_manager = AuthManager()
+
     token = os.getenv("TELEGRAM_ADMIN_BOT_TOKEN")
     if not token:
         raise ValueError("TELEGRAM_ADMIN_BOT_TOKEN missing")
