@@ -151,10 +151,6 @@ class AuthManager:
         except Exception as e:
             return False, f"❌ Error checking status: {e}"
 
-    # --- Backward Compatibility Methods ---
-    def verify_otp(self, user_telegram_id, code):
-        return False, "❌ Please use /verify command instead of entering a code."
-
     def is_verified(self, user_telegram_id):
         doc = self.db.collection('users').document(str(user_telegram_id)).get()
         return doc.exists

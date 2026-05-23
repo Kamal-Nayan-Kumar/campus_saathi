@@ -47,7 +47,7 @@ class QueryEngine:
             context_text = self._retrieve_context(safe_query)
 
             if not context_text:
-                return "I couldn't find any relevant documents to answer your question." if user_lang == "English" else "Mujhe koi relevant documents nahi mile."
+                return "I couldn't find any relevant documents to answer your question."
 
             # Step 3: Generate Answer (with OpenCode Go)
             final_answer = self._execute_opencode(
@@ -62,10 +62,10 @@ class QueryEngine:
             
             return final_answer
 
-        except Exception as e:
-            print(f"CRITICAL ERROR in QueryEngine: {str(e)}")
+        except Exception:
+            print("CRITICAL ERROR in QueryEngine:")
             traceback.print_exc()
-            raise e
+            return "Sorry, something went wrong while processing your query. Please try again later."
 
     def _retrieve_context(self, query: str) -> str:
         try:
@@ -111,17 +111,18 @@ If the info is missing, say so politely in {kwargs.get('target_lang', 'English')
         try:
             print(f"🔄 Querying OpenCode Go ({self.model}) for {task}...")
             
-            response_format = {"type": "json_object"} if is_json else None
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            create_params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": sys_instr},
                     {"role": "user", "content": user_content}
                 ],
-                response_format=response_format,
-                temperature=0.1
-            )
+                "temperature": 0.1
+            }
+            if is_json:
+                create_params["response_format"] = {"type": "json_object"}
+            
+            response = self.client.chat.completions.create(**create_params)
             
             result = response.choices[0].message.content
             

@@ -67,13 +67,20 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not pdf_processor:
             pdf_processor = PDFProcessor()
 
-        pdf_processor.process_and_ingest(tmp_path, document.file_name)
-        
-        os.remove(tmp_path)
-        await status_msg.edit_text(f"✅ Added '{document.file_name}' to knowledge base!")
+        try:
+            pdf_processor.process_and_ingest(tmp_path, document.file_name)
+            await status_msg.edit_text(f"✅ Added '{document.file_name}' to knowledge base!")
+        finally:
+            os.remove(tmp_path)
         
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
+
+async def handle_non_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not auth_manager.is_verified(user_id):
+        return
+    await update.message.reply_text("❌ Only PDF files are supported. Please upload a PDF.")
 
 def init_admin_app():
     """Initializes and returns the Admin Bot Application."""
@@ -88,6 +95,7 @@ def init_admin_app():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("verify", verify_command))
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_non_pdf_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     return app

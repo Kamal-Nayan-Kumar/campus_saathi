@@ -86,6 +86,8 @@ async def student_webhook(request: Request):
     try:
         data = await request.json()
         update = Update.de_json(data, student_app.bot)
+        if update is None:
+            return {"status": "ok"}
         await student_app.process_update(update)
         return {"status": "ok"}
     except Exception as e:
@@ -98,6 +100,8 @@ async def admin_webhook(request: Request):
     try:
         data = await request.json()
         update = Update.de_json(data, admin_app.bot)
+        if update is None:
+            return {"status": "ok"}
         await admin_app.process_update(update)
         return {"status": "ok"}
     except Exception as e:
