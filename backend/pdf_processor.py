@@ -1,20 +1,23 @@
-from google import genai
-from google.genai import types
 import os
-import time
+from openai import OpenAI
+from pypdf import PdfReader
 from llama_index.core.node_parser import SentenceSplitter
 from .database import DatabaseManager
 
 class PDFProcessor:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found")
-        self.client = genai.Client(api_key=api_key)
+        self.api_key = os.getenv("OPENCODE_API_KEY") or os.getenv("OPENCODE_GO_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENCODE_API_KEY (or OPENCODE_GO_API_KEY) not found")
+        
+        self.base_url = "https://opencode.ai/zen/go/v1"
+        self.model = "deepseek-v4-flash"
+        
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
+        )
         self.db_manager = DatabaseManager()
-        # Initialize splitter 
-        # NVIDIA limit is 512 tokens. Lowering to 256 to provide a massive safety buffer
-        # against token estimation mismatches (tables, special chars, etc.)
         self.splitter = SentenceSplitter(chunk_size=256, chunk_overlap=20)
 
     def process_and_ingest(self, file_path: str, filename: str):
@@ -54,39 +57,38 @@ class PDFProcessor:
             raise e
 
     def _parse_pdf(self, path: str) -> str:
-        system_instruction = """You are a document parser. Convert this PDF to clean Markdown.
-        - Preserve tables using Markdown syntax.
-        - Keep headers and structure.
-        - Ignore page numbers."""
-        
         try:
-            with open(path, 'rb') as f:
-                pdf_file = self.client.files.upload(
-                    file=f,
-                    config={'mime_type': 'application/pdf'}
-                )
+            reader = PdfReader(path)
+            full_markdown = []
             
-            # Wait loop
-            while pdf_file.state == 'PROCESSING':
-                time.sleep(2)
-                pdf_file = self.client.files.get(name=pdf_file.name)
+            system_instruction = """You are a document parser. Convert this raw text extracted from a PDF page into clean Markdown.
+- Preserve tables using Markdown table syntax.
+- Keep headers and document structure.
+- Ignore page numbers and running headers/footers.
+- Return ONLY the formatted Markdown. Do not include any intro/outro comments or formatting backticks like ```markdown."""
 
-            if pdf_file.state == 'FAILED':
-                raise Exception("Gemini File Processing Failed")
-
-            response = self.client.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=[
-                    pdf_file,
-                    "Convert this document to Markdown."
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text()
+                if not text or not text.strip():
+                    continue
+                
+                print(f"Formatting page {i+1}/{len(reader.pages)}...")
+                
+                # Use OpenCode Go to clean and format the text
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": text}
+                    ],
+                    temperature=0.1
                 )
-            )
+                
+                page_markdown = response.choices[0].message.content
+                if page_markdown:
+                    full_markdown.append(page_markdown.strip())
             
-            self.client.files.delete(name=pdf_file.name)
-            return response.text
+            return "\n\n".join(full_markdown)
         except Exception as e:
             print(f"Parsing error: {e}")
             raise e

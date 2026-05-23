@@ -9,18 +9,33 @@ class AuthManager:
     def __init__(self):
         # Firebase Admin Init (for Firestore)
         if not firebase_admin._apps:
-            cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-            if cred_path and os.path.exists(cred_path):
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
-            else:
-                cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
-                if cred_json:
-                    cred_dict = json.loads(cred_json)
-                    cred = credentials.Certificate(cred_dict)
-                    firebase_admin.initialize_app(cred)
-                else:
-                    firebase_admin.initialize_app()
+            project_id = os.getenv("FIREBASE_PROJECT_ID")
+            private_key = os.getenv("FIREBASE_PRIVATE_KEY")
+            client_email = os.getenv("FIREBASE_CLIENT_EMAIL")
+
+            if not all([project_id, private_key, client_email]):
+                raise ValueError(
+                    "Missing Firebase credentials. Please configure FIREBASE_PROJECT_ID, "
+                    "FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL in your environment."
+                )
+
+            # Construct service account dict dynamically from individual variables
+            formatted_private_key = private_key.replace("\\n", "\n")
+            cred_dict = {
+                "type": "service_account",
+                "project_id": project_id,
+                "private_key": formatted_private_key,
+                "client_email": client_email,
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+            # Optional fields
+            if os.getenv("FIREBASE_PRIVATE_KEY_ID"):
+                cred_dict["private_key_id"] = os.getenv("FIREBASE_PRIVATE_KEY_ID")
+            if os.getenv("FIREBASE_CLIENT_ID"):
+                cred_dict["client_id"] = os.getenv("FIREBASE_CLIENT_ID")
+
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
         
         self.db = firestore.client()
         self.web_api_key = os.getenv("FIREBASE_WEB_API_KEY")

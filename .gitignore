@@ -5,3 +5,7 @@ chroma_db/
 myenv/
 venv/
 uploads/
+
+.antigravitycli/
+
+.venv/
