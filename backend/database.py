@@ -12,7 +12,7 @@ class DatabaseManager:
         self.client = DataAPIClient(self.astra_token)
         self.db = self.client.get_database(self.astra_endpoint)
 
-    def get_collection(self, collection_name="campus_saathi_docs"):
+    def get_collection(self, collection_name="campus_saathi"):
         """
         Returns the Astra DB collection object.
         Assumes the collection is created with Vectorize enabled on the server side.
