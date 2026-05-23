@@ -34,27 +34,23 @@ class PDFProcessor:
         print(f"Split document into {len(chunks)} chunks.")
 
         # Step 3: Ingest Chunks to Astra DB
-        try:
-            collection = self.db_manager.get_collection()
-            documents_to_insert = []
-            
-            for i, chunk_text in enumerate(chunks):
-                documents_to_insert.append({
-                    "content": chunk_text,
-                    "filename": filename,
-                    "chunk_index": i,
-                    "$vectorize": chunk_text
-                })
-            
-            # Batch insert
-            if documents_to_insert:
-                result = collection.insert_many(documents_to_insert)
-                print(f"Successfully ingested {len(result.inserted_ids)} chunks from {filename} into Astra DB")
-            
-            return True
-        except Exception as e:
-            print(f"Ingestion error: {e}")
-            raise e
+        collection = self.db_manager.get_collection()
+        documents_to_insert = []
+        
+        for i, chunk_text in enumerate(chunks):
+            documents_to_insert.append({
+                "content": chunk_text,
+                "filename": filename,
+                "chunk_index": i,
+                "$vectorize": chunk_text
+            })
+        
+        # Batch insert
+        if documents_to_insert:
+            result = collection.insert_many(documents_to_insert)
+            print(f"Successfully ingested {len(result.inserted_ids)} chunks from {filename} into Astra DB")
+        
+        return True
 
     def _parse_pdf(self, path: str) -> str:
         try:
@@ -91,4 +87,4 @@ class PDFProcessor:
             return "\n\n".join(full_markdown)
         except Exception as e:
             print(f"Parsing error: {e}")
-            raise e
+            raise

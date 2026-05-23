@@ -19,6 +19,11 @@ class AuthManager:
                     "FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL in your environment."
                 )
 
+            # Strip any surrounding quotes or whitespace that might be added during dashboard copy-pasting
+            project_id = project_id.strip().strip('"').strip("'")
+            private_key = private_key.strip().strip('"').strip("'")
+            client_email = client_email.strip().strip('"').strip("'")
+
             # Construct service account dict dynamically from individual variables
             formatted_private_key = private_key.replace("\\n", "\n")
             cred_dict = {
@@ -145,10 +150,6 @@ class AuthManager:
                 
         except Exception as e:
             return False, f"❌ Error checking status: {e}"
-
-    # --- Backward Compatibility Methods ---
-    def verify_otp(self, user_telegram_id, code):
-        return False, "❌ Please use /verify command instead of entering a code."
 
     def is_verified(self, user_telegram_id):
         doc = self.db.collection('users').document(str(user_telegram_id)).get()
