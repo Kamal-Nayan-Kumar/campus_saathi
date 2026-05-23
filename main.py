@@ -1,15 +1,15 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from telegram import Update
-from dotenv import load_dotenv
 
 # Import Bot Initializers
 from student_bot import init_student_app
 from admin_bot import init_admin_app
-
-load_dotenv()
 
 # --- Config ---
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://campus-saathi.onrender.com
