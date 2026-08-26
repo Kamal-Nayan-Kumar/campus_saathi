@@ -9,6 +9,8 @@ uploads/
 .antigravitycli/
 
 .venv/
+.pytest_cache/
+.DS_Store
 
 # Agent/engineering-skill docs (local only, not for GitHub)
 AGENTS.md
