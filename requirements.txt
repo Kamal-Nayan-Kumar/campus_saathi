@@ -1,29 +1,26 @@
-# Web Server (Keep-alive)
+# Web Server
 fastapi
 uvicorn
+python-multipart
 
 # Core Framework
 python-dotenv
-nest_asyncio
-requests
 
 # Telegram
 python-telegram-bot
 
-# AI & LLMs
-openai
-llama-index
-llama-index-vector-stores-astra-db
+# RAG stack (ADR-0001): LangChain owns the chain + splitting,
+# Groq hosts openai/gpt-oss-120b via its OpenAI-compatible API,
+# Qdrant Cloud stores vectors with server-side embeddings.
+langchain
+langchain-openai
+langchain-qdrant
+langchain-text-splitters
+qdrant-client
 
-# Database
-astrapy>=1.0.0
+# PDF parsing
+firecrawl
 
-# Auth
-firebase-admin
-
-# Utils
-email-validator
-pypdf
-
-# test
-# kamal nayan 
+# Dev / test
+pytest
+httpx

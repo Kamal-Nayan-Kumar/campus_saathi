@@ -2,90 +2,61 @@ import os
 import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from backend.auth import AuthManager
 from backend.pdf_processor import PDFProcessor
+from backend.vector_store import KnowledgeBase
 
-auth_manager = None
 pdf_processor = None
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if auth_manager.is_verified(user_id):
-        await update.message.reply_text("🛡️ Welcome back Admin!")
-        return
-
     await update.message.reply_text(
-        "🛡️ Campus Saathi Admin Panel\n\n"
-        "Please enter your Authorized Admin Email to begin verification."
+        "🛡️ Campus Saathi Admin Bot\nSend me a PDF to add it to the knowledge base."
     )
-    context.user_data['awaiting_email'] = True
 
-async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    success, msg = auth_manager.check_verification(user_id)
-    await update.message.reply_text(msg)
-    if success:
-        context.user_data['awaiting_email'] = False
-        await update.message.reply_text("📂 You can now upload PDF documents.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.strip()
-
-    if not auth_manager.is_verified(user_id):
-        if context.user_data.get('awaiting_email'):
-            success, msg = auth_manager.send_otp(user_id, text)
-            await update.message.reply_text(msg)
-            return
-
-        await update.message.reply_text("🔒 Please verify your email first. Send /start to begin.")
-        return
-
     await update.message.reply_text("Please upload a PDF file.")
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not auth_manager.is_verified(user_id):
-        await update.message.reply_text("🔒 Unauthorized.")
-        return
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     if document.mime_type != 'application/pdf':
         await update.message.reply_text("❌ Please upload a PDF file.")
         return
 
     status_msg = await update.message.reply_text("📥 Processing PDF... (This may take a minute)")
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
-        
+
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             await file.download_to_drive(tmp.name)
             tmp_path = tmp.name
 
         global pdf_processor
         if not pdf_processor:
-            pdf_processor = PDFProcessor()
+            pdf_processor = PDFProcessor(knowledge_base=KnowledgeBase())
 
         try:
-            pdf_processor.process_and_ingest(tmp_path, document.file_name)
-            await status_msg.edit_text(f"✅ Added '{document.file_name}' to knowledge base!")
+            with open(tmp_path, "rb") as f:
+                chunks = pdf_processor.process_and_ingest(f.read(), document.file_name)
+            await status_msg.edit_text(
+                f"✅ Added '{document.file_name}' to the knowledge base "
+                f"({chunks} chunks)!"
+            )
         finally:
             os.remove(tmp_path)
-        
+
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
+
 async def handle_non_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not auth_manager.is_verified(user_id):
-        return
     await update.message.reply_text("❌ Only PDF files are supported. Please upload a PDF.")
+
 
 def init_admin_app():
     """Initializes and returns the Admin Bot Application."""
-    global auth_manager
-    auth_manager = AuthManager()
 
     token = os.getenv("TELEGRAM_ADMIN_BOT_TOKEN")
     if not token:
@@ -93,9 +64,8 @@ def init_admin_app():
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("verify", verify_command))
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_non_pdf_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+
     return app

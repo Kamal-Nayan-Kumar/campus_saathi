@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Saathi — Admin Portal</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #1c2333;
+      --muted: #6b7280;
+      --accent: #2f5fe0;
+      --accent-dark: #1e46b4;
+      --danger: #b91c1c;
+      --ok: #15803d;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+    main { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
+    header h1 { font-size: 1.25rem; }
+    header p { font-size: 0.88rem; color: var(--muted); margin-top: 4px; }
+    section {
+      background: var(--panel);
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 20px;
+    }
+    section h2 { font-size: 1rem; margin-bottom: 12px; }
+
+    /* Upload */
+    .dropzone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: #f0f4ff; }
+    .dropzone strong { color: var(--ink); }
+    #file-input { display: none; }
+    .status { margin-top: 12px; font-size: 0.9rem; min-height: 1.3em; }
+    .status.ok { color: var(--ok); }
+    .status.error {
+      color: var(--danger);
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    .progress { margin-top: 12px; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; display: none; }
+    .progress.active { display: block; }
+    .progress .bar {
+      height: 100%; width: 33%;
+      background: var(--accent);
+      border-radius: 3px;
+      animation: slide 1.2s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    /* Documents */
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; }
+    td { padding: 10px 6px; border-bottom: 1px solid #f1f3f7; }
+    td.name { word-break: break-all; }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 12px 0; }
+    .delete-btn {
+      border: 1px solid #fca5a5;
+      background: transparent;
+      color: var(--danger);
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .delete-btn:hover { background: var(--error-bg); }
+    .delete-btn:disabled { opacity: 0.5; cursor: wait; }
+    button[type="submit"] {
+      margin-top: 12px;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button[type="submit"]:disabled { opacity: 0.55; cursor: wait; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>🛡️ Admin Portal</h1>
+      <p>Upload college PDFs to the knowledge base, review what's inside, and remove outdated files.</p>
+    </header>
+
+    <section>
+      <h2>Upload a PDF</h2>
+      <label class="dropzone" id="dropzone" for="file-input">
+        Drag &amp; drop a <strong>PDF</strong> here,<br>or click to choose a file
+      </label>
+      <input type="file" id="file-input" accept="application/pdf,.pdf">
+      <div class="progress" id="progress"><div class="bar"></div></div>
+      <div class="status" id="upload-status"></div>
+    </section>
+
+    <section>
+      <h2>Knowledge Base documents</h2>
+      <table id="doc-table" style="display:none">
+        <thead>
+          <tr><th>File</th><th>Chunks</th><th></th></tr>
+        </thead>
+        <tbody id="doc-rows"></tbody>
+      </table>
+      <p class="empty" id="empty-msg">No documents ingested yet.</p>
+    </section>
+  </main>
+
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const progress = document.getElementById("progress");
+    const statusEl = document.getElementById("upload-status");
+    const docTable = document.getElementById("doc-table");
+    const docRows = document.getElementById("doc-rows");
+    const emptyMsg = document.getElementById("empty-msg");
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = "status" + (cls ? " " + cls : "");
+    }
+
+    function clientSidePdfCheck(file) {
+      if (!file) return false;
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isPdf) setStatus("❌ Only PDF files are supported.", "error");
+      return isPdf;
+    }
+
+    function showProgress(show) {
+      progress.className = "progress" + (show ? " active" : "");
+    }
+
+    async function uploadFile(file) {
+      if (!clientSidePdfCheck(file)) return;
+      showProgress(true);
+      setStatus("Uploading and parsing '" + file.name + "'… this can take a minute.");
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        const res = await fetch("/api/admin/documents", { method: "POST", body });
+        showProgress(false);
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setStatus("✅ Added '" + data.filename + "' — split into " + data.chunks + " chunks.", "ok");
+          refreshList();
+        } else {
+          setStatus("❌ " + (data.detail || ("Upload failed (" + res.status + ")")), "error");
+        }
+      } catch (err) {
+        showProgress(false);
+        setStatus("❌ Network error during upload. Please try again.", "error");
+      } finally {
+        fileInput.value = "";
+      }
+    }
+
+    fileInput.addEventListener("change", () => uploadFile(fileInput.files[0]));
+    ["dragover", "dragenter"].forEach(ev =>
+      dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach(ev =>
+      dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
+    dropzone.addEventListener("drop", e => uploadFile(e.dataTransfer.files[0]));
+
+    async function refreshList() {
+      try {
+        const res = await fetch("/api/admin/documents");
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        docRows.innerHTML = "";
+        const docs = data.documents || [];
+        docTable.style.display = docs.length ? "table" : "none";
+        emptyMsg.style.display = docs.length ? "none" : "block";
+        for (const doc of docs) {
+          const tr = document.createElement("tr");
+
+          const nameTd = document.createElement("td");
+          nameTd.className = "name";
+          nameTd.textContent = doc.filename;
+          tr.appendChild(nameTd);
+
+          const chunksTd = document.createElement("td");
+          chunksTd.textContent = doc.chunks;
+          tr.appendChild(chunksTd);
+
+          const actionTd = document.createElement("td");
+          const delBtn = document.createElement("button");
+          delBtn.className = "delete-btn";
+          delBtn.textContent = "Delete";
+          delBtn.addEventListener("click", () => deleteDoc(doc.filename, delBtn));
+          actionTd.appendChild(delBtn);
+          tr.appendChild(actionTd);
+
+          docRows.appendChild(tr);
+        }
+      } catch (err) {
+        emptyMsg.textContent = "Could not load document list.";
+        emptyMsg.style.display = "block";
+      }
+    }
+
+    async function deleteDoc(filename, btn) {
+      btn.disabled = true;
+      btn.textContent = "Deleting…";
+      try {
+        const res = await fetch("/api/admin/documents/" + encodeURIComponent(filename), {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 404) throw new Error();
+        refreshList();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Delete";
+        alert("Delete failed. Please try again.");
+      }
+    }
+
+    refreshList();
+  </script>
+</body>
+</html>

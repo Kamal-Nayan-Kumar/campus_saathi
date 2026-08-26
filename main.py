@@ -10,6 +10,7 @@ from telegram import Update
 # Import Bot Initializers
 from student_bot import init_student_app
 from admin_bot import init_admin_app
+from backend.api import mount_portals, router as api_router
 
 # --- Config ---
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://campus-saathi.onrender.com
@@ -70,6 +71,8 @@ async def lifespan(app: FastAPI):
 
 # --- FastAPI App ---
 app = FastAPI(lifespan=lifespan)
+app.include_router(api_router)
+mount_portals(app)
 
 @app.get("/")
 def read_root():

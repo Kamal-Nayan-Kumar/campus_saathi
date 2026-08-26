@@ -9,3 +9,10 @@ uploads/
 .antigravitycli/
 
 .venv/
+
+# Agent/engineering-skill docs (local only, not for GitHub)
+AGENTS.md
+docs/
+CONTEXT.md
+CONTEXT-MAP.md
+.scratch/
