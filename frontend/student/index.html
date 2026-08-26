@@ -4,141 +4,266 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Campus Saathi — Student Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f4f6fb;
-      --panel: #ffffff;
-      --ink: #1c2333;
-      --muted: #6b7280;
-      --accent: #2f5fe0;
-      --accent-dark: #1e46b4;
-      --bot-bubble: #eef1fa;
-      --user-bubble: #2f5fe0;
-      --error: #b91c1c;
+      --slate: #20372F;
+      --slate-soft: #2C463C;
+      --paper: #FAF9F4;
+      --card: #FFFFFF;
+      --ink: #24312B;
+      --muted: #6E7A72;
+      --line: #DFE4DB;
+      --marigold: #E9A13B;
+      --error-bg: #FBEDEA;
+      --error-ink: #8C3B2E;
+      --font-display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+      --font-body: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
+      font-family: var(--font-body);
+      background: var(--paper);
       color: var(--ink);
       display: flex;
-      justify-content: center;
-      min-height: 100vh;
+      flex-direction: column;
     }
-    .chat-app {
+
+    /* Slate chalkboard header — full bleed */
+    .board {
+      background: var(--slate);
+      color: var(--paper);
+      padding: 18px 24px 16px;
+    }
+    .board-inner, .thread-inner, .composer {
       width: 100%;
       max-width: 720px;
+      margin: 0 auto;
+    }
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.35rem;
+      letter-spacing: -0.01em;
       display: flex;
-      flex-direction: column;
-      height: 100vh;
+      align-items: center;
+      gap: 10px;
     }
-    header {
-      background: var(--panel);
-      border-bottom: 1px solid #e5e7eb;
-      padding: 16px 20px;
+    .brand::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--marigold);
+      flex: none;
     }
-    header h1 { font-size: 1.15rem; }
-    header p { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
-    #thread {
+    .board .tagline {
+      margin-top: 4px;
+      font-size: 0.88rem;
+      color: rgba(250, 249, 244, 0.72);
+    }
+
+    /* Thread */
+    #thread-outer {
       flex: 1;
       overflow-y: auto;
-      padding: 20px;
+      background-image: radial-gradient(var(--line) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    #thread {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      padding: 24px;
+      min-height: 100%;
     }
     .bubble {
-      max-width: 80%;
-      padding: 10px 14px;
-      border-radius: 14px;
-      line-height: 1.5;
+      max-width: 82%;
+      padding: 11px 15px;
+      font-size: 0.95rem;
+      line-height: 1.55;
       white-space: pre-wrap;
       word-wrap: break-word;
-      font-size: 0.95rem;
+      animation: rise 0.18s ease-out;
     }
     .bot {
       align-self: flex-start;
-      background: var(--bot-bubble);
-      border-bottom-left-radius: 4px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px 14px 14px 4px;
+      box-shadow: 0 1px 2px rgba(36, 49, 43, 0.05);
     }
     .user {
       align-self: flex-end;
-      background: var(--user-bubble);
-      color: #fff;
-      border-bottom-right-radius: 4px;
+      background: var(--slate);
+      color: var(--paper);
+      border-radius: 14px 14px 4px 14px;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
     .thinking {
       align-self: flex-start;
+      padding: 11px 15px;
       color: var(--muted);
-      font-style: italic;
       font-size: 0.9rem;
-      padding: 6px 4px;
+    }
+    .thinking::after {
+      content: "";
+      display: inline-block;
+      width: 1.4em;
+      text-align: left;
+      animation: dots 1.2s steps(4) infinite;
+    }
+    @keyframes dots {
+      0% { content: ""; }
+      25% { content: "."; }
+      50% { content: ".."; }
+      75% { content: "..."; }
     }
     .error-msg {
       align-self: center;
-      color: var(--error);
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      padding: 8px 14px;
+      background: var(--error-bg);
+      color: var(--error-ink);
       border-radius: 10px;
+      padding: 8px 14px;
       font-size: 0.88rem;
     }
-    form {
+
+    /* Empty state */
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      padding: 24px;
+    }
+    .empty-state p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+    }
+    .chips {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
-      padding: 14px 20px;
-      background: var(--panel);
-      border-top: 1px solid #e5e7eb;
+      justify-content: center;
     }
-    #question {
-      flex: 1;
-      padding: 12px 14px;
-      border: 1px solid #d1d5db;
-      border-radius: 10px;
-      font-size: 1rem;
-      outline: none;
-    }
-    #question:focus { border-color: var(--accent); }
-    button {
-      padding: 12px 20px;
-      border: none;
-      border-radius: 10px;
-      background: var(--accent);
-      color: #fff;
-      font-size: 1rem;
+    .chip {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 8px 15px;
+      font: inherit;
+      font-size: 0.86rem;
+      color: var(--ink);
       cursor: pointer;
     }
-    button:hover { background: var(--accent-dark); }
+    .chip:hover { border-color: var(--slate); }
+
+    /* Composer — full bleed white bar */
+    footer {
+      background: var(--card);
+      border-top: 1px solid var(--line);
+      padding: 14px 24px 12px;
+    }
+    form { display: flex; gap: 8px; }
+    #question {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.98rem;
+      background: var(--paper);
+      outline: none;
+    }
+    #question:focus-visible, button:focus-visible, .chip:focus-visible {
+      outline: 2px solid var(--marigold);
+      outline-offset: 2px;
+    }
+    button[type="submit"] {
+      padding: 12px 22px;
+      border: none;
+      border-radius: 999px;
+      background: var(--slate);
+      color: var(--paper);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button[type="submit"]:hover { background: var(--slate-soft); }
     button:disabled { opacity: 0.55; cursor: wait; }
     .hint {
+      margin-top: 8px;
       text-align: center;
-      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
       color: var(--muted);
-      padding-bottom: 8px;
+    }
+
+    @media (max-width: 520px) {
+      .board { padding: 16px 18px 14px; }
+      #thread { padding: 16px; }
+      .bubble { max-width: 90%; }
+      footer { padding: 12px 14px 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bubble { animation: none; }
     }
   </style>
 </head>
 <body>
-  <div class="chat-app">
-    <header>
-      <h1>🎓 Campus Saathi</h1>
-      <p>Ask anything about campus — in any language.</p>
-    </header>
-    <div id="thread" aria-live="polite"></div>
-    <form id="chat-form">
-      <input id="question" type="text" placeholder="Type your question…" autocomplete="off" required>
-      <button type="submit" id="send-btn">Send</button>
-    </form>
-    <p class="hint">Answers are generated from ingested college documents.</p>
+  <header class="board">
+    <div class="board-inner">
+      <div class="brand">Campus Saathi</div>
+      <p class="tagline">Ask about campus — in any language.</p>
+    </div>
+  </header>
+
+  <div id="thread-outer">
+    <main id="thread">
+      <div class="empty-state" id="empty-state">
+        <p>Ask your first question — try one of these:</p>
+        <div class="chips">
+          <button type="button" class="chip">When does the library open?</button>
+          <button type="button" class="chip">Where is the exam cell?</button>
+          <button type="button" class="chip">What are the mess timings?</button>
+        </div>
+      </div>
+    </main>
   </div>
+
+  <footer>
+    <div class="composer">
+      <form id="chat-form">
+        <input id="question" type="text" placeholder="Ask a question…" autocomplete="off" required>
+        <button type="submit" id="send-btn">Send</button>
+      </form>
+      <p class="hint">ANSWERS COME FROM INGESTED COLLEGE DOCUMENTS</p>
+    </div>
+  </footer>
 
   <script>
     const thread = document.getElementById("thread");
+    const emptyState = document.getElementById("empty-state");
     const form = document.getElementById("chat-form");
     const input = document.getElementById("question");
     const sendBtn = document.getElementById("send-btn");
 
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        input.value = chip.textContent;
+        input.focus();
+      });
+    });
+
     function addBubble(text, cls) {
+      emptyState.remove();
       const div = document.createElement("div");
       div.className = "bubble " + cls;
       div.textContent = text;
@@ -151,7 +276,7 @@
       const div = document.createElement("div");
       div.className = "thinking";
       div.id = "thinking";
-      div.textContent = "Thinking…";
+      div.textContent = "Thinking";
       thread.appendChild(div);
       thread.scrollTop = thread.scrollHeight;
       return div;
@@ -187,7 +312,7 @@
         addBubble(data.answer, "bot");
       } catch (err) {
         thinking.remove();
-        addError("Could not reach the assistant. Please check your connection and try again.");
+        addError("Can't reach the assistant right now. Check your connection and try again.");
       } finally {
         sendBtn.disabled = false;
         input.focus();
