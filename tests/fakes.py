@@ -55,3 +55,10 @@ class FakeQueryEngine:
     def process_query(self, user_query: str) -> str:
         self.last_query = user_query
         return "The central library is open from 9 AM to 8 PM on weekdays."
+
+
+class BrokenQueryEngine:
+    """Simulates the AI adapter failing at request time."""
+
+    def process_query(self, user_query: str) -> str:
+        raise RuntimeError("connection to AI service failed")

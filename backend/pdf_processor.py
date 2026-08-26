@@ -6,6 +6,7 @@ One admin upload = one ingestion run. No fallback parser.
 import os
 
 from firecrawl import Firecrawl
+from firecrawl.v2.types import ParseOptions
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
@@ -42,6 +43,6 @@ class PDFProcessor:
             file_bytes,
             filename=filename,
             content_type="application/pdf",
-            options={"formats": ["markdown"]},
+            options=ParseOptions(formats=["markdown"]),
         )
         return doc.markdown or ""

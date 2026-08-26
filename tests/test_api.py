@@ -4,6 +4,8 @@ External services (Groq, Qdrant, Firecrawl) are replaced by fakes injected
 into app.state; assertions target HTTP responses only.
 """
 
+from tests.fakes import BrokenQueryEngine
+
 
 def test_chat_returns_answer(client):
     res = client.post("/api/chat", json={"message": "When does the library open?"})
@@ -17,6 +19,19 @@ def test_chat_returns_answer(client):
 def test_chat_requires_message(client):
     res = client.post("/api/chat", json={})
     assert res.status_code == 422
+
+
+def test_chat_rejects_whitespace_only_message(app, client):
+    app.state.query_engine = BrokenQueryEngine()  # must not even be reached
+    res = client.post("/api/chat", json={"message": "   "})
+    assert res.status_code == 422
+
+
+def test_chat_returns_graceful_error_when_ai_unreachable(app, client):
+    app.state.query_engine = BrokenQueryEngine()
+    res = client.post("/api/chat", json={"message": "When does the library open?"})
+    assert res.status_code == 503
+    assert "try again" in res.json()["detail"].lower()
 
 
 def test_upload_pdf_returns_chunk_count_and_lists_document(client):

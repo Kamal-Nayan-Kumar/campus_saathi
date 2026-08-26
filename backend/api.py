@@ -74,11 +74,19 @@ class DocumentListResponse(BaseModel):
 
 @router.post("/api/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, request: Request):
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Message must not be empty.")
     try:
         engine = get_query_engine(request)
+        answer = engine.process_query(message)
     except ValueError as exc:  # missing configuration
         raise HTTPException(status_code=503, detail=str(exc))
-    answer = engine.process_query(payload.message.strip())
+    except Exception:  # adapter failed at request time
+        raise HTTPException(
+            status_code=503,
+            detail="The assistant can't reach its AI service right now. Please try again later.",
+        )
     return ChatResponse(answer=answer)
 
 

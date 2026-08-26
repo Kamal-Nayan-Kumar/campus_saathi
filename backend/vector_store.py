@@ -40,6 +40,13 @@ class KnowledgeBase:
                     distance=models.Distance.COSINE,
                 ),
             )
+        # Required for payload-filtered deletes on filename
+        if "filename" not in (self.client.get_collection(COLLECTION_NAME).payload_schema or {}):
+            self.client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="filename",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
 
     def upsert_chunks(self, filename: str, chunks: list[str]) -> int:
         """Ingest one document's chunks; embeddings computed server-side."""
@@ -86,20 +93,23 @@ class KnowledgeBase:
 
     def delete_document(self, filename: str) -> bool:
         """Remove every chunk of a document via payload filter. True if any existed."""
-        existing = {doc["filename"] for doc in self.list_documents()}
-        if filename not in existing:
+        filename_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="filename",
+                    match=models.MatchValue(value=filename),
+                )
+            ]
+        )
+        count = self.client.count(
+            collection_name=COLLECTION_NAME,
+            count_filter=filename_filter,
+            exact=True,
+        ).count
+        if count == 0:
             return False
         self.client.delete(
             collection_name=COLLECTION_NAME,
-            points_selector=models.FilterSelector(
-                filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="filename",
-                            match=models.MatchValue(value=filename),
-                        )
-                    ]
-                )
-            ),
+            points_selector=models.FilterSelector(filter=filename_filter),
         )
         return True
