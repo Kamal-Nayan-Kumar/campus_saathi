@@ -1,138 +1,101 @@
-import os
+"""QueryEngine (ADR-0001): the RAG chain on LangChain + Groq.
+
+Flow: detect language + translate to English (Groq) -> similarity search in
+the Knowledge Base -> answer grounded in retrieved context, replied in the
+user's language. Model: openai/gpt-oss-120b via the plain langchain-openai
+client pointed at Groq's OpenAI-compatible base URL (no langchain-groq).
+"""
+
 import json
-import traceback
-from openai import OpenAI
-from .database import DatabaseManager
+import os
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+MODEL = "openai/gpt-oss-120b"
+
+TRANSLATE_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a translator.\n"
+            "1. Detect the language of the user's message.\n"
+            "2. Translate it to English.\n"
+            '3. Reply ONLY with JSON: {{"translation": "...", "detected_language": "..."}}',
+        ),
+        ("human", "{query}"),
+    ]
+)
+
+ANSWER_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a helpful assistant for a college.\n"
+            "Answer the user's question based strictly on the provided context.\n"
+            "Respond in this language: {language}.\n"
+            "If the info is missing from the context, say so politely in {language}.",
+        ),
+        ("human", "Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"),
+    ]
+)
+
 
 class QueryEngine:
-    def __init__(self):
-        # Initialize Database
-        self.db_manager = DatabaseManager()
-        
-        # --- OpenCode Go API Config ---
-        # We check both OPENCODE_API_KEY and OPENCODE_GO_API_KEY for convenience
-        self.api_key = os.getenv("OPENCODE_API_KEY") or os.getenv("OPENCODE_GO_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENCODE_API_KEY (or OPENCODE_GO_API_KEY) not found in environment variables")
-        
-        self.base_url = "https://opencode.ai/zen/go/v1"
-        self.model = "deepseek-v4-flash"
-        
-        # Initialize OpenAI client pointed to OpenCode Go endpoint
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
+    def __init__(self, knowledge_base):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not found in environment variables")
+
+        self.knowledge_base = knowledge_base
+        self.llm = ChatOpenAI(
+            model=MODEL,
+            api_key=api_key,
+            base_url=GROQ_BASE_URL,
+            temperature=0.1,
         )
+        self.translate_chain = TRANSLATE_PROMPT | self.llm | StrOutputParser()
+        self.answer_chain = ANSWER_PROMPT | self.llm | StrOutputParser()
 
     def process_query(self, user_query: str) -> str:
         try:
-            # Step 1: Translate (with OpenCode Go)
-            translation_result = self._execute_opencode(
-                task="translation", 
-                prompt=user_query
+            # Step 1: detect language and translate to English
+            english_query, language = self._translate(user_query)
+
+            # Step 2: retrieve context from the Knowledge Base
+            context_chunks = self.knowledge_base.search(english_query[:1000])
+            if not context_chunks:
+                return (
+                    "I couldn't find any relevant documents to answer your question."
+                )
+
+            # Step 3: generate a grounded answer in the user's language
+            answer = self.answer_chain.invoke(
+                {
+                    "context": "\n\n".join(context_chunks),
+                    "question": user_query,
+                    "language": language,
+                }
             )
-            
-            # If translation failed completely, fallback to original
-            if not translation_result:
-                english_query = user_query
-                user_lang = "English"
-            else:
-                english_query = translation_result.get("translation", user_query)
-                user_lang = translation_result.get("detected_language", "English")
-            
-            print(f"Debug: Original: {user_query}, Translated: {english_query}, Lang: {user_lang}")
-
-            # Step 2: Retrieve Context
-            safe_query = english_query[:1000]
-            context_text = self._retrieve_context(safe_query)
-
-            if not context_text:
-                return "I couldn't find any relevant documents to answer your question."
-
-            # Step 3: Generate Answer (with OpenCode Go)
-            final_answer = self._execute_opencode(
-                task="generation",
-                prompt=user_query, # Use original query in prompt
-                context=context_text,
-                target_lang=user_lang
+            return answer or "Sorry, something went wrong. Please try again later."
+        except Exception as exc:
+            print(f"CRITICAL ERROR in QueryEngine: {exc}")
+            return (
+                "Sorry, the assistant can't reach its AI service right now. "
+                "Please try again later."
             )
-            
-            if not final_answer:
-                return "Sorry, the AI model is currently overloaded. Please try again later."
-            
-            return final_answer
 
-        except Exception:
-            print("CRITICAL ERROR in QueryEngine:")
-            traceback.print_exc()
-            return "Sorry, something went wrong while processing your query. Please try again later."
-
-    def _retrieve_context(self, query: str) -> str:
+    def _translate(self, user_query: str) -> tuple[str, str]:
+        """Returns (english_query, detected_language); falls back to the original."""
         try:
-            collection = self.db_manager.get_collection()
-            results = collection.find(
-                sort={"$vectorize": query},
-                limit=5,
-                projection={"content": 1}
+            raw = self.translate_chain.invoke({"query": user_query})
+            clean = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(clean)
+            return data.get("translation", user_query), data.get(
+                "detected_language", "English"
             )
-            documents = []
-            for doc in results:
-                if 'content' in doc:
-                    documents.append(doc['content'])
-            return "\n\n".join(documents)
-        except Exception as e:
-            print(f"Search error in Astra DB: {e}")
-            return ""
-
-    def _execute_opencode(self, task, **kwargs):
-        """
-        Executes a call to OpenCode Go endpoint using deepseek-v4-flash.
-        """
-        system_instr_trans = """You are a translator.
-1. Detect the language of the query.
-2. Translate it to English.
-3. Return JSON: {"translation": "...", "detected_language": "..."}"""
-
-        system_instr_gen = f"""You are a helpful assistant for a college.
-Answer the user's question based strictly on the provided context.
-Respond in the user's detected language: {kwargs.get('target_lang', 'English')}.
-If the info is missing, say so politely in {kwargs.get('target_lang', 'English')}."""
-
-        # Prepare Inputs based on Task
-        if task == "translation":
-            sys_instr = system_instr_trans
-            user_content = kwargs['prompt']
-            is_json = True
-        else: # generation
-            sys_instr = system_instr_gen
-            user_content = f"Context:\n{kwargs.get('context')}\n\nUser Question: {kwargs.get('prompt')}\n\nAnswer:"
-            is_json = False
-
-        try:
-            print(f"🔄 Querying OpenCode Go ({self.model}) for {task}...")
-            
-            create_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": sys_instr},
-                    {"role": "user", "content": user_content}
-                ],
-                "temperature": 0.1
-            }
-            if is_json:
-                create_params["response_format"] = {"type": "json_object"}
-            
-            response = self.client.chat.completions.create(**create_params)
-            
-            result = response.choices[0].message.content
-            
-            if result:
-                if is_json:
-                    # Clean up markdown if present
-                    clean = result.replace("```json", "").replace("```", "").strip()
-                    return json.loads(clean)
-                return result
-
-        except Exception as e:
-            print(f"❌ Failed to query OpenCode Go: {e}")
-            return None
+        except Exception as exc:
+            print(f"Translation failed, using original query: {exc}")
+            return user_query, "English"

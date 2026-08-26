@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Saathi — Admin Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --slate: #20372F;
+      --slate-soft: #2C463C;
+      --paper: #FAF9F4;
+      --card: #FFFFFF;
+      --ink: #24312B;
+      --muted: #6E7A72;
+      --line: #DFE4DB;
+      --marigold: #E9A13B;
+      --error-bg: #FBEDEA;
+      --error-ink: #8C3B2E;
+      --ok-ink: #3D6B4F;
+      --font-display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+      --font-body: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Slate chalkboard header — full bleed */
+    .board {
+      background: var(--slate);
+      color: var(--paper);
+      padding: 22px 24px 20px;
+    }
+    .board-inner, main {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.45rem;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--marigold);
+      flex: none;
+    }
+    .board .tagline {
+      margin-top: 5px;
+      font-size: 0.9rem;
+      color: rgba(250, 249, 244, 0.72);
+      max-width: 46ch;
+    }
+
+    main {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 1px 2px rgba(36, 49, 43, 0.05);
+    }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* Upload dropzone */
+    .dropzone {
+      display: block;
+      border: 2px dashed #C3CCC1;
+      border-radius: 12px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background-color 0.15s;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .dropzone strong { color: var(--ink); font-weight: 600; }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--marigold);
+      background: #FCF4E4;
+    }
+    #file-input { display: none; }
+
+    .progress {
+      margin-top: 14px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--line);
+      overflow: hidden;
+      display: none;
+    }
+    .progress.active { display: block; }
+    .progress .bar {
+      height: 100%;
+      width: 33%;
+      background: var(--marigold);
+      border-radius: 2px;
+      animation: slide 1.2s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      min-height: 1.3em;
+    }
+    .status.ok { color: var(--ok-ink); }
+    .status.error {
+      color: var(--error-ink);
+      background: var(--error-bg);
+      padding: 9px 13px;
+      border-radius: 8px;
+    }
+
+    /* Document list */
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th {
+      text-align: left;
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    td { padding: 12px 8px; border-bottom: 1px solid #EEF0EA; }
+    tr:last-child td { border-bottom: none; }
+    td.name { word-break: break-all; font-weight: 500; }
+    td.count, th.count { width: 90px; }
+    td.count { font-family: var(--font-mono); font-size: 0.82rem; color: var(--muted); }
+    td.action, th.action { width: 84px; text-align: right; }
+
+    .delete-btn {
+      border: none;
+      background: none;
+      padding: 4px 2px;
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 500;
+      color: var(--error-ink);
+      cursor: pointer;
+    }
+    .delete-btn:hover { text-decoration: underline; }
+    .delete-btn:disabled { opacity: 0.5; cursor: wait; }
+
+    button:focus-visible, .dropzone:focus-visible {
+      outline: 2px solid var(--marigold);
+      outline-offset: 2px;
+    }
+
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 10px 0; }
+
+    @media (max-width: 520px) {
+      .board { padding: 18px 18px 16px; }
+      main { padding: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .progress .bar { animation: none; transform: none; width: 100%; opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <header class="board">
+    <div class="board-inner">
+      <div class="brand">Admin Portal</div>
+      <p class="tagline">Upload college PDFs to the Knowledge Base, review what's inside, and remove outdated files.</p>
+    </div>
+  </header>
+
+  <main>
+      <section class="card">
+        <p class="eyebrow">Add documents</p>
+        <label class="dropzone" id="dropzone" for="file-input">
+          Drop a <strong>PDF</strong> here,<br>or click to browse
+        </label>
+        <input type="file" id="file-input" accept="application/pdf,.pdf">
+        <div class="progress" id="progress"><div class="bar"></div></div>
+        <div class="status" id="upload-status"></div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">In the Knowledge Base</p>
+        <table id="doc-table" style="display:none">
+          <thead>
+            <tr><th>File</th><th class="count">Chunks</th><th class="action"></th></tr>
+          </thead>
+          <tbody id="doc-rows"></tbody>
+        </table>
+        <p class="empty" id="empty-msg">Nothing here yet — upload your first PDF above.</p>
+      </section>
+    </main>
+
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const progress = document.getElementById("progress");
+    const statusEl = document.getElementById("upload-status");
+    const docTable = document.getElementById("doc-table");
+    const docRows = document.getElementById("doc-rows");
+    const emptyMsg = document.getElementById("empty-msg");
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = "status" + (cls ? " " + cls : "");
+    }
+
+    function clientSidePdfCheck(file) {
+      if (!file) return false;
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isPdf) setStatus("Only PDF files are accepted.", "error");
+      return isPdf;
+    }
+
+    function showProgress(show) {
+      progress.className = "progress" + (show ? " active" : "");
+    }
+
+    async function uploadFile(file) {
+      if (!clientSidePdfCheck(file)) return;
+      showProgress(true);
+      setStatus("Uploading '" + file.name + "'… parsing can take a minute.");
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        const res = await fetch("/api/admin/documents", { method: "POST", body });
+        showProgress(false);
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setStatus("'" + data.filename + "' added — split into " + data.chunks + " chunks.", "ok");
+          refreshList();
+        } else {
+          setStatus(data.detail || ("Upload failed (" + res.status + ")"), "error");
+        }
+      } catch (err) {
+        showProgress(false);
+        setStatus("Upload failed — check your connection and try again.", "error");
+      } finally {
+        fileInput.value = "";
+      }
+    }
+
+    fileInput.addEventListener("change", () => uploadFile(fileInput.files[0]));
+    ["dragover", "dragenter"].forEach(ev =>
+      dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach(ev =>
+      dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
+    dropzone.addEventListener("drop", e => uploadFile(e.dataTransfer.files[0]));
+
+    async function refreshList() {
+      try {
+        const res = await fetch("/api/admin/documents");
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        docRows.innerHTML = "";
+        const docs = data.documents || [];
+        docTable.style.display = docs.length ? "table" : "none";
+        emptyMsg.style.display = docs.length ? "none" : "block";
+        for (const doc of docs) {
+          const tr = document.createElement("tr");
+
+          const nameTd = document.createElement("td");
+          nameTd.className = "name";
+          nameTd.textContent = doc.filename;
+          tr.appendChild(nameTd);
+
+          const chunksTd = document.createElement("td");
+          chunksTd.className = "count";
+          chunksTd.textContent = doc.chunks;
+          tr.appendChild(chunksTd);
+
+          const actionTd = document.createElement("td");
+          actionTd.className = "action";
+          const delBtn = document.createElement("button");
+          delBtn.className = "delete-btn";
+          delBtn.textContent = "Delete";
+          delBtn.addEventListener("click", () => deleteDoc(doc.filename, delBtn));
+          actionTd.appendChild(delBtn);
+          tr.appendChild(actionTd);
+
+          docRows.appendChild(tr);
+        }
+      } catch (err) {
+        emptyMsg.textContent = "Couldn't load the document list.";
+        emptyMsg.style.display = "block";
+      }
+    }
+
+    async function deleteDoc(filename, btn) {
+      btn.disabled = true;
+      btn.textContent = "Deleting…";
+      try {
+        const res = await fetch("/api/admin/documents/" + encodeURIComponent(filename), {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 404) throw new Error();
+        refreshList();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Delete";
+      }
+    }
+
+    refreshList();
+  </script>
+</body>
+</html>
