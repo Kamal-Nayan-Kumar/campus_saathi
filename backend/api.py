@@ -12,11 +12,9 @@ API contract:
 Portals are served same-origin at /student and /admin — no CORS config.
 """
 
-import json
 import os
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -90,45 +88,6 @@ def chat(payload: ChatRequest, request: Request):
             detail="The assistant can't reach its AI service right now. Please try again later.",
         )
     return ChatResponse(answer=answer)
-
-
-@router.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, request: Request):
-    message = payload.message.strip()
-    if not message:
-        raise HTTPException(status_code=422, detail="Message must not be empty.")
-    try:
-        engine = get_query_engine(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-
-    async def event_generator():
-        try:
-            english_query, language = engine._translate(message)
-            context_chunks = engine.knowledge_base.search(english_query[:1000])
-            if not context_chunks:
-                yield f"data: {json.dumps({'token': 'I couldn\'t find any relevant documents to answer your question.'})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-            inputs = {
-                "context": "\n\n".join(context_chunks),
-                "question": message,
-                "language": language,
-            }
-            async for token in engine.answer_stream_chain.astream(inputs):
-                if token:
-                    yield f"data: {json.dumps({'token': token})}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': 'The assistant can\'t reach its AI service right now. Please try again later.'})}\n\n"
-            yield "data: [DONE]\n\n"
-            print(f"Stream error: {exc}")
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.post("/api/admin/documents", response_model=DocumentResponse)
