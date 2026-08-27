@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
       --slate: #20372F;
@@ -44,6 +45,8 @@
       max-width: 720px;
       margin: 0 auto;
     }
+    .board-inner { text-align: center; }
+    .board .brand { justify-content: center; }
     .brand {
       font-family: var(--font-display);
       font-weight: 700;
@@ -80,16 +83,28 @@
       gap: 12px;
       padding: 24px;
       min-height: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      width: 100%;
     }
     .bubble {
       max-width: 82%;
       padding: 11px 15px;
       font-size: 0.95rem;
       line-height: 1.55;
-      white-space: pre-wrap;
       word-wrap: break-word;
       animation: rise 0.18s ease-out;
     }
+    .bubble.bot p { margin: 0.4em 0; }
+    .bubble.bot p:first-child { margin-top: 0; }
+    .bubble.bot p:last-child { margin-bottom: 0; }
+    .bubble.bot strong { font-weight: 600; }
+    .bubble.bot ul, .bubble.bot ol { margin: 0.5em 0 0.5em 1.2em; }
+    .bubble.bot table { border-collapse: collapse; width: 100%; margin: 0.6em 0; font-size: 0.9em; }
+    .bubble.bot th, .bubble.bot td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+    .bubble.bot th { background: var(--paper); font-weight: 600; }
+    .bubble.bot code { background: var(--paper); padding: 1px 4px; border-radius: 4px; font-size: 0.88em; }
+    .bubble.bot pre { background: var(--paper); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 0.6em 0; }
     .bot {
       align-self: flex-start;
       background: var(--card);
@@ -263,12 +278,16 @@
     });
 
     function addBubble(text, cls) {
-      emptyState.remove();
+      if (emptyState && emptyState.parentNode) emptyState.remove();
       const div = document.createElement("div");
       div.className = "bubble " + cls;
-      div.textContent = text;
+      if (cls === "bot") {
+        div.innerHTML = marked.parse(text);
+      } else {
+        div.textContent = text;
+      }
       thread.appendChild(div);
-      thread.scrollTop = thread.scrollHeight;
+      document.getElementById("thread-outer").scrollTop = document.getElementById("thread-outer").scrollHeight;
       return div;
     }
 
@@ -278,7 +297,8 @@
       div.id = "thinking";
       div.textContent = "Thinking";
       thread.appendChild(div);
-      thread.scrollTop = thread.scrollHeight;
+      const outer = document.getElementById("thread-outer");
+      outer.scrollTop = outer.scrollHeight;
       return div;
     }
 
@@ -287,7 +307,8 @@
       div.className = "error-msg";
       div.textContent = text;
       thread.appendChild(div);
-      thread.scrollTop = thread.scrollHeight;
+      const outer = document.getElementById("thread-outer");
+      outer.scrollTop = outer.scrollHeight;
     }
 
     form.addEventListener("submit", async (e) => {
