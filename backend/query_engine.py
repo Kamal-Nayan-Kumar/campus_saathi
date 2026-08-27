@@ -56,8 +56,16 @@ class QueryEngine:
             base_url=GROQ_BASE_URL,
             temperature=0.1,
         )
+        self.llm_stream = ChatOpenAI(
+            model=MODEL,
+            api_key=api_key,
+            base_url=GROQ_BASE_URL,
+            temperature=0.1,
+            streaming=True,
+        )
         self.translate_chain = TRANSLATE_PROMPT | self.llm | StrOutputParser()
         self.answer_chain = ANSWER_PROMPT | self.llm | StrOutputParser()
+        self.answer_stream_chain = ANSWER_PROMPT | self.llm_stream | StrOutputParser()
 
     def process_query(self, user_query: str) -> str:
         try:

@@ -141,6 +141,14 @@
       50% { content: ".."; }
       75% { content: "..."; }
     }
+    .bubble.bot.streaming::after {
+      content: "▍";
+      display: inline;
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+      color: var(--slate);
+    }
+    @keyframes blink { 50% { opacity: 0; } }
     .error-msg {
       align-self: center;
       background: var(--error-bg);
@@ -320,23 +328,68 @@
       input.value = "";
       sendBtn.disabled = true;
       const thinking = addThinking();
+      const outer = document.getElementById("thread-outer");
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: question }),
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || "Server returned " + res.status);
+        }
+        // Switch from thinking to streaming bubble
         thinking.remove();
-        if (!res.ok) throw new Error("Server returned " + res.status);
-        const data = await res.json();
-        addBubble(data.answer, "bot");
+        const botDiv = document.createElement("div");
+        botDiv.className = "bubble bot streaming";
+        thread.appendChild(botDiv);
+        outer.scrollTop = outer.scrollHeight;
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+          for (const part of parts) {
+            if (!part.startsWith("data: ")) continue;
+            const data = part.slice(6).trim();
+            if (data === "[DONE]") break;
+            try {
+              const obj = JSON.parse(data);
+              if (obj.token) {
+                fullText += obj.token;
+                botDiv.innerHTML = marked.parse(fullText);
+                outer.scrollTop = outer.scrollHeight;
+              } else if (obj.error) {
+                botDiv.innerHTML = marked.parse(obj.error);
+              }
+            } catch {}
+          }
+        }
+        botDiv.classList.remove("streaming");
+        if (!fullText) {
+          botDiv.remove();
+          addError("Can't reach the assistant right now. Check your connection and try again.");
+        }
       } catch (err) {
-        thinking.remove();
-        addError("Can't reach the assistant right now. Check your connection and try again.");
+        if (thinking.parentNode) thinking.remove();
+        // Remove streaming bubble if created but empty
+        const streaming = document.querySelector(".bubble.bot.streaming");
+        if (streaming) streaming.remove();
+        addError(err.message && err.message !== "Server returned 503" ? err.message : "Can't reach the assistant right now. Check your connection and try again.");
       } finally {
         sendBtn.disabled = false;
         input.focus();
+        const stillThinking = document.getElementById("thinking");
+        if (stillThinking) stillThinking.remove();
       }
     });
   </script>
