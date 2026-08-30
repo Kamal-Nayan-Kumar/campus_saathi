@@ -16,6 +16,7 @@ langchain
 langchain-openai
 langchain-qdrant
 langchain-text-splitters
+langchain-community
 qdrant-client
 
 # Document parsing — dual: Firecrawl (cloud) + local fallbacks
@@ -23,6 +24,10 @@ firecrawl
 pypdf
 openpyxl
 python-docx
+
+# RAG Evaluation
+ragas
+datasets
 
 # Dev / test
 pytest
