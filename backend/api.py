@@ -1,13 +1,16 @@
 """HTTP API + Portal serving (ADR-0003).
 
-All routes read their collaborators (QueryEngine, PDFProcessor, KnowledgeBase)
-from ``app.state``, so tests can inject fakes through the HTTP seam only.
+All routes read their collaborators (QueryEngine, PDFProcessor, KnowledgeBase,
+WebsiteCrawler) from ``app.state``, so tests can inject fakes through the HTTP seam only.
 
 API contract:
     POST   /api/chat                     {message} -> {answer}
-    POST   /api/admin/documents          multipart PDF -> {filename, chunks}
+    POST   /api/admin/documents          multipart file -> {filename, chunks}
     GET    /api/admin/documents          -> {documents: [{filename, chunks}]}
     DELETE /api/admin/documents/{filename}            -> removes that file's chunks
+    POST   /api/admin/website/crawl      -> crawl iiitdwd.ac.in via Firecrawl
+    GET    /api/admin/website/status     -> crawl status & website docs
+    DELETE /api/admin/website            -> remove all website:* docs
 
 Portals are served same-origin at /student and /admin — no CORS config.
 """
@@ -21,6 +24,7 @@ from pydantic import BaseModel
 from backend.pdf_processor import PDFProcessor
 from backend.query_engine import QueryEngine
 from backend.vector_store import KnowledgeBase
+from backend.website_crawler import WebsiteCrawler
 
 router = APIRouter()
 
@@ -51,14 +55,22 @@ def get_knowledge_base(request: Request) -> KnowledgeBase:
     return _get_state(request, "knowledge_base", KnowledgeBase)
 
 
+def get_website_crawler(request: Request) -> WebsiteCrawler:
+    def build():
+        return WebsiteCrawler(knowledge_base=get_knowledge_base(request))
+    return _get_state(request, "website_crawler", build)
+
+
 # --- Schemas ---
 
 class ChatRequest(BaseModel):
     message: str
+    history: list[dict] = []  # list of {role: "user"|"assistant", content: str}, last 5 max
 
 
 class ChatResponse(BaseModel):
     answer: str
+    sources: list[str] = []
 
 
 class DocumentResponse(BaseModel):
@@ -79,7 +91,7 @@ def chat(payload: ChatRequest, request: Request):
         raise HTTPException(status_code=422, detail="Message must not be empty.")
     try:
         engine = get_query_engine(request)
-        answer = engine.process_query(message)
+        answer, sources = engine.process_query(message, payload.history)
     except ValueError as exc:  # missing configuration
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception:  # adapter failed at request time
@@ -87,13 +99,15 @@ def chat(payload: ChatRequest, request: Request):
             status_code=503,
             detail="The assistant can't reach its AI service right now. Please try again later.",
         )
-    return ChatResponse(answer=answer)
+    return ChatResponse(answer=answer, sources=sources)
 
 
 @router.post("/api/admin/documents", response_model=DocumentResponse)
 def upload_document(request: Request, file: UploadFile):
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    lower = (file.filename or "").lower()
+    allowed = (".pdf", ".xlsx", ".xls", ".txt", ".md", ".docx", ".doc")
+    if not lower.endswith(allowed):
+        raise HTTPException(status_code=400, detail="Only PDF, Excel, Word (.docx), text (.txt, .md) files are supported.")
 
     file_bytes = file.file.read()
     if not file_bytes:
@@ -129,6 +143,79 @@ def delete_document(filename: str, request: Request):
     if not kb.delete_document(filename):
         raise HTTPException(status_code=404, detail=f"'{filename}' not found.")
     return {"status": "deleted", "filename": filename}
+
+
+# --- Website crawl (Firecrawl, iiitdwd.ac.in) ---
+
+class CrawlRequest(BaseModel):
+    limit: int = 20
+    url: str | None = None
+
+
+class CrawlResponse(BaseModel):
+    target: str
+    pages: int
+    chunks: int
+    urls: list[str] = []
+    deleted: int = 0
+    timestamp: str
+
+
+class WebsiteStatusResponse(BaseModel):
+    target: str
+    total_pages: int
+    total_chunks: int
+    documents: list[DocumentResponse]
+    last_crawl: dict | None = None
+
+
+@router.get("/api/admin/website/status", response_model=WebsiteStatusResponse)
+def website_status(request: Request):
+    try:
+        crawler = get_website_crawler(request)
+        status = crawler.get_status()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Status failed: {exc}")
+    return WebsiteStatusResponse(
+        target=status["target"],
+        total_pages=status["total_pages"],
+        total_chunks=status["total_chunks"],
+        documents=[DocumentResponse(**d) for d in status["documents"]],
+        last_crawl=status["last_crawl"],
+    )
+
+
+@router.post("/api/admin/website/crawl", response_model=CrawlResponse)
+def crawl_website(payload: CrawlRequest | None, request: Request):
+    limit = 20
+    if payload and payload.limit:
+        limit = max(1, min(50, payload.limit))
+    if payload and payload.url:
+        # allow override via payload, but validate iiitdwd domain
+        if "iiitdwd.ac.in" not in payload.url:
+            raise HTTPException(status_code=400, detail="Only iiitdwd.ac.in can be crawled")
+    try:
+        crawler = get_website_crawler(request)
+        if payload and payload.url:
+            crawler.target_url = payload.url
+        result = crawler.crawl(limit=limit, delete_old=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Crawl failed: {exc}")
+    return CrawlResponse(**result)
+
+
+@router.delete("/api/admin/website")
+def delete_website(request: Request):
+    try:
+        crawler = get_website_crawler(request)
+        deleted = crawler._delete_existing()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"status": "deleted", "deleted": deleted}
 
 
 def mount_portals(app, frontend_dir: str | None = None) -> None:

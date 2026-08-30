@@ -18,8 +18,11 @@ langchain-qdrant
 langchain-text-splitters
 qdrant-client
 
-# PDF parsing
+# Document parsing — dual: Firecrawl (cloud) + local fallbacks
 firecrawl
+pypdf
+openpyxl
+python-docx
 
 # Dev / test
 pytest

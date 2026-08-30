@@ -72,6 +72,22 @@ class KnowledgeBase:
         )
         return [hit.payload.get("content", "") for hit in result.points]
 
+    def search_with_sources(self, query_text: str, limit: int = 5) -> tuple[list[str], list[str]]:
+        """Return (content_chunks, filenames) from the top-k most similar chunks."""
+        result = self.client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=models.Document(text=query_text, model=EMBED_MODEL),
+            limit=limit,
+            with_payload=True,
+        )
+        chunks = []
+        sources = []
+        for hit in result.points:
+            payload = hit.payload or {}
+            chunks.append(payload.get("content", ""))
+            sources.append(payload.get("filename", "unknown"))
+        return chunks, sources
+
     def list_documents(self) -> list[dict]:
         """Aggregate all points by filename -> [{filename, chunks}]."""
         counts: dict[str, int] = {}

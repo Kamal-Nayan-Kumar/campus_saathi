@@ -51,13 +51,43 @@ def test_upload_pdf_returns_chunk_count_and_lists_document(client):
     assert {"filename": "handbook.pdf", "chunks": body["chunks"]} in docs
 
 
-def test_upload_rejects_non_pdf_with_clear_message(client):
+def test_upload_rejects_unsupported_type_with_clear_message(client):
+    res = client.post(
+        "/api/admin/documents",
+        files={"file": ("archive.zip", b"just some text", "application/zip")},
+    )
+    assert res.status_code == 400
+    assert "PDF" in res.json()["detail"]
+
+
+def test_upload_txt_is_now_accepted(client):
     res = client.post(
         "/api/admin/documents",
         files={"file": ("notes.txt", b"just some text", "text/plain")},
     )
-    assert res.status_code == 400
-    assert "PDF" in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json()["filename"] == "notes.txt"
+
+
+def test_website_crawl_and_status(client):
+    res = client.post("/api/admin/website/crawl", json={"limit": 2})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["pages"] >= 1
+    assert body["chunks"] >= 1
+
+    status = client.get("/api/admin/website/status")
+    assert status.status_code == 200
+    assert status.json()["total_pages"] >= 1
+
+
+def test_website_refresh_is_idempotent(client):
+    client.post("/api/admin/website/crawl", json={"limit": 1})
+    first = client.get("/api/admin/website/status").json()["total_pages"]
+    client.post("/api/admin/website/crawl", json={"limit": 1})
+    second = client.get("/api/admin/website/status").json()["total_pages"]
+    assert second == 1  # refresh deletes old before re-ingest, not accumulate
+    assert first == second
 
 
 def test_upload_rejects_empty_file(client):
