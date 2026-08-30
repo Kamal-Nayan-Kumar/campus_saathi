@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Campus Saathi — Student Portal</title>
+  <link rel="icon" type="image/png" href="cs_logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
@@ -150,11 +151,64 @@
       font-size: 0.88rem;
     }
 
+    /* Source tag at bottom of bot bubble */
+    .source-tag {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: var(--paper);
+      cursor: default;
+      font-family: var(--font-mono);
+      letter-spacing: 0.01em;
+    }
+    .source-tag .source-label {
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .source-wrap {
+      margin-top: 8px;
+    }
+    .source-tag[onclick] {
+      cursor: pointer;
+    }
+    .source-detail {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      line-height: 1.5;
+    }
+
     /* Empty state */
     .empty-state {
       margin: auto;
       text-align: center;
       padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .empty-state .hero-cover {
+      width: min(440px, 92vw);
+      height: auto;
+      max-width: 100%;
+      border-radius: 0;
+      object-fit: contain;
+      object-position: center;
+      border: none;
+      box-shadow: none;
+      margin-bottom: 22px;
+      background: transparent;
+      display: block;
+      padding: 0;
     }
     .empty-state p {
       color: var(--muted);
@@ -234,20 +288,24 @@
 </head>
 <body>
   <header class="board">
-    <div class="board-inner">
-      <div class="brand">Campus Saathi</div>
-      <p class="tagline">Ask about campus — in any language.</p>
+    <div class="board-inner" style="display:flex; align-items:center; gap:14px; text-align:left; justify-content:flex-start;">
+      <img src="cs_logo.png" alt="Campus Saathi" style="width:54px; height:54px; border-radius:12px; object-fit:contain; flex:none; display:block;">
+      <div>
+        <div style="font-family:var(--font-display); font-weight:700; font-size:1.28rem; letter-spacing:-0.01em; line-height:1; color:var(--paper);">Campus <span style="color:var(--marigold);">Saathi</span></div>
+        <div style="font-size:0.82rem; color:rgba(250,249,244,0.72); margin-top:3px;">Ask about campus — in any language.</div>
+      </div>
     </div>
   </header>
 
   <div id="thread-outer">
     <main id="thread">
       <div class="empty-state" id="empty-state">
+        <img src="cover.png" alt="Campus Saathi — Your AI Campus Assistant" class="hero-cover">
         <p>Ask your first question — try one of these:</p>
         <div class="chips">
-          <button type="button" class="chip">When does the library open?</button>
-          <button type="button" class="chip">Where is the exam cell?</button>
-          <button type="button" class="chip">What are the mess timings?</button>
+          <button type="button" class="chip">What is the fee for 3rd semester?</button>
+          <button type="button" class="chip">What is in dinner today?</button>
+          <button type="button" class="chip">When is the next bus from campus?</button>
         </div>
       </div>
     </main>
@@ -269,6 +327,35 @@
     const form = document.getElementById("chat-form");
     const input = document.getElementById("question");
     const sendBtn = document.getElementById("send-btn");
+    const STORAGE_KEY = "campus_saathi_history_v1";
+    const MAX_HISTORY = 5; // last 5 Q&A pairs sent to AI for context
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveHistory(turns) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(turns));
+      } catch {
+        // localStorage may be full or disabled; fail silently
+      }
+    }
+
+    function appendTurn(turn) {
+      const turns = loadHistory();
+      turns.push(turn);
+      // Keep only the last MAX_HISTORY * 2 entries (each pair = user + assistant)
+      const trimmed = turns.slice(-MAX_HISTORY * 2);
+      saveHistory(trimmed);
+    }
 
     document.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
@@ -277,18 +364,72 @@
       });
     });
 
-    function addBubble(text, cls) {
+    function addBubble(text, cls, sources) {
       if (emptyState && emptyState.parentNode) emptyState.remove();
       const div = document.createElement("div");
       div.className = "bubble " + cls;
       if (cls === "bot") {
-        div.innerHTML = marked.parse(text);
+        let html = marked.parse(text);
+        if (sources && sources.length > 0) {
+          html += renderSourceTag(sources);
+        }
+        div.innerHTML = html;
       } else {
         div.textContent = text;
       }
       thread.appendChild(div);
       document.getElementById("thread-outer").scrollTop = document.getElementById("thread-outer").scrollHeight;
       return div;
+    }
+
+    function renderSourceTag(sources) {
+      const isMobile = window.innerWidth <= 520;
+      // "Source:" black, filename muted
+      const sourceLabel = '<span class="source-label">Source:</span>';
+      const sourcesLabel = '<span class="source-label">Sources (' + sources.length + '):</span>';
+      // On mobile, collapse by default; on desktop, show all at once
+      if (isMobile) {
+        return (
+          '<div class="source-wrap">' +
+          '<span class="source-tag" onclick="toggleSource(this)">📄 ' +
+          '<span class="source-label">Tap</span> to see ' + sources.length + ' sources' +
+          ' ▼</span>' +
+          '<div class="source-detail" style="display:none">' +
+          sources.map(s => '<span class="source-label">•</span> ' + escapeHtml(s)).join("<br>") +
+          '</div></div>'
+        );
+      }
+      if (sources.length === 1) {
+        return (
+          '<div class="source-tag">📄 ' + sourceLabel + ' ' +
+          '<span>' + escapeHtml(sources[0]) + '</span></div>'
+        );
+      }
+      return (
+        '<div class="source-tag">📄 ' + sourcesLabel + ' ' +
+        sources.map(s => '<span>' + escapeHtml(s) + '</span>').join(", ") +
+        '</div>'
+      );
+    }
+
+    function toggleSource(tag) {
+      const detail = tag.nextElementSibling;
+      if (!detail) return;
+      if (detail.style.display === "none") {
+        detail.style.display = "block";
+        tag.innerHTML = tag.innerHTML.replace(" ▼", " ▲");
+      } else {
+        detail.style.display = "none";
+        tag.innerHTML = tag.innerHTML.replace(" ▲", " ▼");
+      }
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function addThinking() {
@@ -322,15 +463,24 @@
       const thinking = addThinking();
 
       try {
+        // Send last 5 Q&A pairs as conversation context
+        const history = loadHistory();
+        // Format as [{role:"user",content:...}, {role:"assistant",content:...}, ...]
+        // We only need the last 5 pairs = 10 entries max; trim to last 10
+        const historyPayload = history.slice(-10);
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: question }),
+          body: JSON.stringify({ message: question, history: historyPayload }),
         });
         thinking.remove();
         if (!res.ok) throw new Error("Server returned " + res.status);
         const data = await res.json();
-        addBubble(data.answer, "bot");
+        addBubble(data.answer, "bot", data.sources || []);
+        // Save this Q&A pair to local history
+        appendTurn({ role: "user", content: question });
+        appendTurn({ role: "assistant", content: data.answer });
       } catch (err) {
         thinking.remove();
         addError("Can't reach the assistant right now. Check your connection and try again.");

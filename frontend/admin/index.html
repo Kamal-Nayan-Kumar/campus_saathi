@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Campus Saathi — Admin Portal</title>
+  <link rel="icon" type="image/png" href="cs_logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
@@ -198,19 +199,63 @@
 </head>
 <body>
   <header class="board">
-    <div class="board-inner">
-      <div class="brand">Admin Portal</div>
-      <p class="tagline">Upload college PDFs to the Knowledge Base, review what's inside, and remove outdated files.</p>
+    <div class="board-inner" style="display:flex; align-items:center; gap:14px; text-align:left; justify-content:flex-start;">
+      <img src="cs_logo.png" alt="Campus Saathi" style="width:54px; height:54px; border-radius:12px; object-fit:contain; flex:none; display:block;">
+      <div>
+        <div style="font-family:var(--font-display); font-weight:700; font-size:1.28rem; letter-spacing:-0.01em; line-height:1; color:var(--paper); display:flex; align-items:center; flex-wrap:wrap; gap:8px;">Campus <span style="color:var(--marigold);">Saathi</span> <span style="background:var(--marigold); color:var(--slate); padding:3px 10px; border-radius:999px; font-size:0.72rem; font-weight:700; letter-spacing:0.08em; line-height:1;">ADMIN</span></div>
+        <div style="font-size:0.82rem; color:rgba(250,249,244,0.72); margin-top:3px;">Upload PDFs, Excel, Word, or text to the Knowledge Base.</div>
+      </div>
     </div>
   </header>
 
+  <!-- Confirm modal -->
+  <div id="confirm-overlay" style="display:none; position:fixed; inset:0; background:rgba(32,55,47,0.52); backdrop-filter:blur(2px); z-index:50; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:var(--card); border:1px solid var(--line); border-radius:16px; max-width:440px; width:100%; padding:22px; box-shadow:0 12px 32px rgba(32,55,47,0.18);">
+      <div id="confirm-title" style="font-family:var(--font-display); font-weight:700; font-size:1.1rem; color:var(--ink);">Confirm action?</div>
+      <div id="confirm-msg" style="margin-top:8px; font-size:0.92rem; line-height:1.55; color:var(--muted);"></div>
+      <div id="confirm-file" style="margin-top:10px; font-family:var(--font-mono); font-size:0.78rem; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 10px; display:none;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:18px;">
+        <button id="confirm-cancel" style="padding:9px 16px; border:1px solid var(--line); border-radius:999px; background:var(--card); font:inherit; font-weight:600; cursor:pointer;">Cancel</button>
+        <button id="confirm-ok" style="padding:9px 18px; border:none; border-radius:999px; background:var(--slate); color:var(--paper); font:inherit; font-weight:600; cursor:pointer;">Confirm & Upload</button>
+      </div>
+      <div style="margin-top:8px; font-size:0.7rem; color:var(--muted); text-align:right;">This will use AI credits (Qdrant + Firecrawl)</div>
+    </div>
+  </div>
+
   <main>
+      <section class="card" id="website-card">
+        <p class="eyebrow">College Website — Firecrawl</p>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
+              <span style="width:8px; height:8px; border-radius:50%; background:var(--marigold); display:inline-block;"></span>
+              iiitdwd.ac.in
+            </div>
+            <div id="website-status" style="font-size:0.82rem; color:var(--muted); margin-top:4px;">Checking status…</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <select id="crawl-limit" style="padding:7px 10px; border:1px solid var(--line); border-radius:999px; background:var(--paper); font:inherit; font-size:0.82rem;">
+              <option value="10">10 pages</option>
+              <option value="20" selected>20 pages</option>
+              <option value="30">30 pages</option>
+              <option value="50">50 pages</option>
+            </select>
+            <button id="crawl-btn" style="padding:9px 18px; border:none; border-radius:999px; background:var(--slate); color:var(--paper); font:inherit; font-weight:600; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:6px;">
+              <span id="crawl-btn-label">Refresh Website</span>
+            </button>
+          </div>
+        </div>
+        <div id="website-detail" style="margin-top:10px; font-size:0.8rem; color:var(--muted); font-family:var(--font-mono); line-height:1.5; display:none;"></div>
+        <div class="progress" id="crawl-progress"><div class="bar"></div></div>
+        <div class="status" id="crawl-status"></div>
+      </section>
+
       <section class="card">
         <p class="eyebrow">Add documents</p>
         <label class="dropzone" id="dropzone" for="file-input">
-          Drop a <strong>PDF</strong> here,<br>or click to browse
+          Drop a <strong>PDF, Excel, Word, or text</strong> here,<br>or click to browse
         </label>
-        <input type="file" id="file-input" accept="application/pdf,.pdf">
+        <input type="file" id="file-input" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls,.txt,.md,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx">
         <div class="progress" id="progress"><div class="bar"></div></div>
         <div class="status" id="upload-status"></div>
       </section>
@@ -223,7 +268,7 @@
           </thead>
           <tbody id="doc-rows"></tbody>
         </table>
-        <p class="empty" id="empty-msg">Nothing here yet — upload your first PDF above.</p>
+        <p class="empty" id="empty-msg">Nothing here yet — upload your first document above.</p>
       </section>
     </main>
 
@@ -243,14 +288,36 @@
 
     function clientSidePdfCheck(file) {
       if (!file) return false;
-      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-      if (!isPdf) setStatus("Only PDF files are accepted.", "error");
-      return isPdf;
+      const lower = file.name.toLowerCase();
+      const isAllowed = lower.endsWith(".pdf") || lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".docx") || lower.endsWith(".doc");
+      if (!isAllowed) setStatus("Only PDF, Excel, Word (.docx), text (.txt, .md) files are accepted.", "error");
+      return isAllowed;
     }
 
     function showProgress(show) {
       progress.className = "progress" + (show ? " active" : "");
     }
+
+    // Confirm modal helpers
+    const confirmOverlay = document.getElementById("confirm-overlay");
+    const confirmTitle = document.getElementById("confirm-title");
+    const confirmMsg = document.getElementById("confirm-msg");
+    const confirmFile = document.getElementById("confirm-file");
+    const confirmOk = document.getElementById("confirm-ok");
+    const confirmCancel = document.getElementById("confirm-cancel");
+    let pendingConfirmAction = null;
+    function showConfirm({title, msg, fileInfo, okLabel}, onConfirm) {
+      confirmTitle.textContent = title;
+      confirmMsg.textContent = msg;
+      if (fileInfo) { confirmFile.textContent = fileInfo; confirmFile.style.display = "block"; } else { confirmFile.style.display = "none"; }
+      confirmOk.textContent = okLabel || "Confirm";
+      confirmOverlay.style.display = "flex";
+      pendingConfirmAction = onConfirm;
+    }
+    function hideConfirm() { confirmOverlay.style.display = "none"; pendingConfirmAction = null; }
+    confirmCancel.addEventListener("click", hideConfirm);
+    confirmOk.addEventListener("click", () => { const act = pendingConfirmAction; hideConfirm(); if (act) act(); });
+    confirmOverlay.addEventListener("click", (e) => { if (e.target === confirmOverlay) hideConfirm(); });
 
     async function uploadFile(file) {
       if (!clientSidePdfCheck(file)) return;
@@ -276,12 +343,22 @@
       }
     }
 
-    fileInput.addEventListener("change", () => uploadFile(fileInput.files[0]));
+    function confirmAndUpload(file) {
+      if (!file || !clientSidePdfCheck(file)) return;
+      const kb = (file.size / 1024).toFixed(1);
+      showConfirm({
+        title: "Confirm upload?",
+        msg: "You are about to ingest this file into the Knowledge Base. Wrong files cost Firecrawl + Qdrant credits and may pollute answers. Please double-check the file.",
+        fileInfo: file.name + " • " + kb + " KB • " + (file.name.split('.').pop().toUpperCase()),
+        okLabel: "Yes, ingest"
+      }, () => uploadFile(file));
+    }
+    fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) confirmAndUpload(f); else fileInput.value=""; });
     ["dragover", "dragenter"].forEach(ev =>
       dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("dragover"); }));
     ["dragleave", "drop"].forEach(ev =>
       dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
-    dropzone.addEventListener("drop", e => uploadFile(e.dataTransfer.files[0]));
+    dropzone.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) confirmAndUpload(f); });
 
     async function refreshList() {
       try {
@@ -323,20 +400,101 @@
     }
 
     async function deleteDoc(filename, btn) {
-      btn.disabled = true;
-      btn.textContent = "Deleting…";
+      showConfirm({
+        title: "Delete document?",
+        msg: "This will permanently remove all chunks of this file from the Knowledge Base and it will no longer be used for answers.",
+        fileInfo: filename,
+        okLabel: "Yes, delete"
+      }, async () => {
+        btn.disabled = true;
+        btn.textContent = "Deleting…";
+        try {
+          const res = await fetch("/api/admin/documents/" + encodeURIComponent(filename), { method: "DELETE" });
+          if (!res.ok && res.status !== 404) throw new Error();
+          refreshList();
+          refreshWebsiteStatus();
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = "Delete";
+        }
+      });
+    }
+
+    // --- College website crawl (Firecrawl, iiitdwd.ac.in) ---
+    const crawlBtn = document.getElementById("crawl-btn");
+    const crawlBtnLabel = document.getElementById("crawl-btn-label");
+    const websiteStatus = document.getElementById("website-status");
+    const websiteDetail = document.getElementById("website-detail");
+    const crawlProgress = document.getElementById("crawl-progress");
+    const crawlStatus = document.getElementById("crawl-status");
+
+    async function refreshWebsiteStatus() {
       try {
-        const res = await fetch("/api/admin/documents/" + encodeURIComponent(filename), {
-          method: "DELETE",
-        });
-        if (!res.ok && res.status !== 404) throw new Error();
-        refreshList();
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = "Delete";
+        const res = await fetch("/api/admin/website/status");
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (data.total_pages > 0) {
+          websiteStatus.textContent = data.total_pages + " pages • " + data.total_chunks + " chunks from " + data.target;
+          const ago = data.last_crawl ? new Date(data.last_crawl.timestamp).toLocaleString() : "";
+          websiteDetail.style.display = "block";
+          websiteDetail.innerHTML = (ago ? "Last refresh: " + ago + "<br>" : "") + data.documents.slice(0,6).map(d => "• " + d.filename.replace("website:iiitdwd.ac.in:","")).join("<br>") + (data.documents.length > 6 ? "<br>+" + (data.documents.length-6) + " more" : "");
+          crawlBtnLabel.textContent = "Refresh Website";
+        } else {
+          websiteStatus.textContent = "Not crawled yet — click Refresh to ingest iiitdwd.ac.in";
+          websiteDetail.style.display = "none";
+          crawlBtnLabel.textContent = "Crawl Website";
+        }
+      } catch {
+        websiteStatus.textContent = "Website status unavailable";
       }
     }
 
+    async function doCrawl() {
+      const limit = parseInt(document.getElementById("crawl-limit").value || "20", 10);
+      crawlBtn.disabled = true;
+      crawlBtnLabel.textContent = "Crawling…";
+      crawlProgress.className = "progress active";
+      crawlStatus.textContent = "Crawling iiitdwd.ac.in via Firecrawl — this can take ~30–60s for " + limit + " pages…";
+      crawlStatus.className = "status";
+      try {
+        const res = await fetch("/api/admin/website/crawl", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({limit}) });
+        const data = await res.json().catch(() => ({}));
+        crawlProgress.className = "progress";
+        if (res.ok) {
+          crawlStatus.textContent = "Done — " + data.pages + " pages, " + data.chunks + " chunks ingested. Refreshing list…";
+          crawlStatus.className = "status ok";
+          await refreshWebsiteStatus();
+          await refreshList();
+        } else {
+          crawlStatus.textContent = data.detail || ("Crawl failed (" + res.status + ")");
+          crawlStatus.className = "status error";
+        }
+      } catch (err) {
+        crawlProgress.className = "progress";
+        crawlStatus.textContent = "Crawl failed — check connection and try again.";
+        crawlStatus.className = "status error";
+      } finally {
+        crawlBtn.disabled = false;
+        if (websiteStatus.textContent.includes("Not crawled")) crawlBtnLabel.textContent = "Crawl Website";
+        else crawlBtnLabel.textContent = "Refresh Website";
+      }
+    }
+
+    function crawlWebsite() {
+      const isFirst = websiteStatus.textContent.includes("Not crawled");
+      const limit = parseInt(document.getElementById("crawl-limit").value || "20", 10);
+      showConfirm({
+        title: isFirst ? "Crawl college website?" : "Refresh website?",
+        msg: isFirst
+          ? "This will crawl https://iiitdwd.ac.in via Firecrawl (up to " + limit + " pages). It discovers links recursively—not just the homepage—so subpages like /academics, /admissions, /campus-life get ingested. It will cost Firecrawl credits and Qdrant writes."
+          : "This will DELETE the existing website crawl (all website:* docs) and re-crawl iiitdwd.ac.in recursively (up to " + limit + " linked pages, not just homepage). Costs Firecrawl + embedding credits. Continue?",
+        fileInfo: "Target: https://iiitdwd.ac.in • Limit: " + limit + " pages (recursive)",
+        okLabel: isFirst ? "Yes, crawl" : "Yes, refresh"
+      }, () => doCrawl());
+    }
+    crawlBtn.addEventListener("click", crawlWebsite);
+
+    refreshWebsiteStatus();
     refreshList();
   </script>
 </body>
