@@ -1,0 +1,27 @@
+[
+  {
+    "question": "What is the tuition fee per semester for B.Tech students?",
+    "ground_truth": "The tuition fee per semester for B.Tech students is Rs. 50,000 (Rupees Fifty Thousand only).",
+    "language": "English"
+  },
+  {
+    "question": "What is the hostel fee per semester?",
+    "ground_truth": "The hostel fee per semester is Rs. 15,000 (Rupees Fifteen Thousand only), which includes mess charges.",
+    "language": "English"
+  },
+  {
+    "question": "What time does the institute bus leave from the main gate on weekdays?",
+    "ground_truth": "The institute bus departs from the main gate at 7:30 AM on weekdays.",
+    "language": "English"
+  },
+  {
+    "question": "What is today's mess menu?",
+    "ground_truth": "The mess menu varies by day. Monday typically has Roti, Dal, Rice, and Sabzi. Friday typically has Biryani, Raita, and Dessert.",
+    "language": "English"
+  },
+  {
+    "question": "When do the end-semester exams start for the 5th and 7th semester?",
+    "ground_truth": "The end-semester examinations for the 5th and 7th semester start on November 15, 2026.",
+    "language": "English"
+  }
+]

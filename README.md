@@ -182,3 +182,21 @@ Tests use FastAPI `TestClient` with faked adapters. Covers chat, upload, list, d
 Deployed on **Render** via `Procfile`. Auto-deploy on `master`.
 
 Env vars on Render: `GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `FIRECRAWL_API_KEY`, `TELEGRAM_STUDENT_BOT_TOKEN`, `TELEGRAM_ADMIN_BOT_TOKEN`, `WEBHOOK_URL=https://campus-saathi-system.onrender.com`.
+
+---
+
+## RAG Evaluation
+
+Uses `ragas` (v0.4.3) + real `QueryEngine` on Qdrant to score retrieval + generation.
+
+![RAG Metrics](tests/fixtures/rag_results.png)
+
+```bash
+# Quick sanity (dataset + retrieval, ~10s)
+dotenv run -- .venv/bin/python3 -m pytest tests/test_rag_ragas.py::TestRagEvaluation::test_all_five_metrics_are_computed -v -s
+
+# Full gate (slow — ~60s, Groq judge calls)
+dotenv run -- .venv/bin/python3 -m pytest tests/test_rag_ragas.py -v -s -m slow
+```
+
+**5 metrics:** `faithfulness` (0.72) · `answer_relevancy` (0.68) · `context_recall` (0.58) · `context_precision` (0.64) · `answer_correctness` (0.55). Raw scores: `tests/fixtures/rag_real_scores.csv`. See `docs/README-rag-eval.md`.

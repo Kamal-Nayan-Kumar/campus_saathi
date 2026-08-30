@@ -9,12 +9,19 @@ uploads/
 .antigravitycli/
 
 .venv/
+.venv-rag/
+.venv-eval/
 .pytest_cache/
 .DS_Store
 
 # Agent/engineering-skill docs (local only, not for GitHub)
 AGENTS.md
-docs/
 CONTEXT.md
 CONTEXT-MAP.md
 .scratch/
+
+# docs/ is gitignored EXCEPT the RAG eval README we want on GitHub
+# docs/ mostly local; keep RAG eval doc
+!docs/README-rag-eval.md
+docs/agents/
+docs/adr/
