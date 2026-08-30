@@ -13,9 +13,7 @@ WELCOME = (
     "Try:\n"
     "• *What is the fee for 3rd semester?*\n"
     "• *What is in dinner today?*\n"
-    "• *When is the next bus from campus?*\n"
-    "\n"
-    "_Answers come from ingested college documents & iiitdwd.ac.in (via Firecrawl)._"
+    "• *When is the next bus from campus?*"
 )
 
 HELP = (

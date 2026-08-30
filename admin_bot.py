@@ -25,8 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I manage the Knowledge Base for the Admin Portal.\n"
         "• Send *PDF, Excel, Word (.docx), TXT or MD* to ingest\n"
         "• Use /crawl to refresh the college website (iiitdwd.ac.in) — recursively crawls up to 20 linked pages, not just homepage\n"
-        "• Use /status to see what's ingested\n"
-        "\n_Design matches the portal: slate #20372F + marigold #E9A13B_",
+        "• Use /status to see what's ingested",
         parse_mode="Markdown"
     )
 
