@@ -7,69 +7,76 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from telegram import Update
 
-# Import Bot Initializers
 from student_bot import init_student_app
 from admin_bot import init_admin_app
 from backend.api import mount_portals, router as api_router
 
-# --- Config ---
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://campus-saathi.onrender.com
-STUDENT_TOKEN = os.getenv("TELEGRAM_STUDENT_BOT_TOKEN")
-ADMIN_TOKEN = os.getenv("TELEGRAM_ADMIN_BOT_TOKEN")
-
-# Global Apps
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 student_app = None
 admin_app = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifecycle manager: 
-    1. Init bots
-    2. Set Webhooks
-    3. Run startup tasks
-    4. Clean up on shutdown
-    """
     global student_app, admin_app
-    
     print("🚀 Initializing Bots...")
-    
-    # 1. Initialize
-    student_app = init_student_app()
-    admin_app = init_admin_app()
-    
-    # 2. Start Apps
-    await student_app.initialize()
-    await admin_app.initialize()
-    await student_app.start()
-    await admin_app.start()
-    
-    # 3. Set Webhooks
-    if WEBHOOK_URL:
+    try:
+        student_app = init_student_app()
+    except Exception as e:
+        print(f"⚠️ Student bot not started: {e}")
+        student_app = None
+    try:
+        admin_app = init_admin_app()
+    except Exception as e:
+        print(f"⚠️ Admin bot not started: {e}")
+        admin_app = None
+
+    if student_app:
+        await student_app.initialize()
+        await student_app.start()
+    if admin_app:
+        await admin_app.initialize()
+        await admin_app.start()
+
+    if WEBHOOK_URL and student_app and admin_app:
         print(f"🔗 Setting Webhooks to base: {WEBHOOK_URL}")
-        
-        # Student Webhook
-        s_url = f"{WEBHOOK_URL}/student-webhook"
-        await student_app.bot.set_webhook(url=s_url)
-        print(f"✅ Student Webhook set: {s_url}")
-        
-        # Admin Webhook
-        a_url = f"{WEBHOOK_URL}/admin-webhook"
-        await admin_app.bot.set_webhook(url=a_url)
-        print(f"✅ Admin Webhook set: {a_url}")
-    else:
-        print("⚠️ WEBHOOK_URL not found. Bots will not receive updates unless polling is manually enabled (which it isn't).")
+        try:
+            s_url = f"{WEBHOOK_URL}/student-webhook"
+            await student_app.bot.set_webhook(url=s_url)
+            print(f"✅ Student Webhook set: {s_url}")
+            a_url = f"{WEBHOOK_URL}/admin-webhook"
+            await admin_app.bot.set_webhook(url=a_url)
+            print(f"✅ Admin Webhook set: {a_url}")
+        except Exception as e:
+            print(f"⚠️ Webhook setup failed: {e}")
+    elif student_app or admin_app:
+        print("⚠️ WEBHOOK_URL not found — starting polling for local dev (Ctrl+C to stop)")
+        try:
+            if student_app and student_app.updater:
+                await student_app.updater.start_polling(drop_pending_updates=True)
+                print("✅ Student bot polling started (@CampusSaathi_Bot)")
+            if admin_app and admin_app.updater:
+                await admin_app.updater.start_polling(drop_pending_updates=True)
+                print("✅ Admin bot polling started (@CampusSaathiAdmin_Bot)")
+        except Exception as e:
+            print(f"Polling start failed: {e}")
 
     yield
-    
-    # 4. Shutdown
-    print("🛑 Shutting down bots...")
-    await student_app.stop()
-    await admin_app.stop()
-    await student_app.shutdown()
-    await admin_app.shutdown()
 
-# --- FastAPI App ---
+    print("🛑 Shutting down bots...")
+    try:
+        if student_app:
+            if student_app.updater and student_app.updater.running:
+                await student_app.updater.stop()
+            await student_app.stop()
+            await student_app.shutdown()
+        if admin_app:
+            if admin_app.updater and admin_app.updater.running:
+                await admin_app.updater.stop()
+            await admin_app.stop()
+            await admin_app.shutdown()
+    except Exception as e:
+        print(f"Shutdown note: {e}")
+
 app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 mount_portals(app)
@@ -85,7 +92,8 @@ def health_check():
 
 @app.post("/student-webhook")
 async def student_webhook(request: Request):
-    """Handle incoming updates for Student Bot"""
+    if not student_app:
+        return {"status": "ok", "note": "student bot not configured"}
     try:
         data = await request.json()
         update = Update.de_json(data, student_app.bot)
@@ -99,7 +107,8 @@ async def student_webhook(request: Request):
 
 @app.post("/admin-webhook")
 async def admin_webhook(request: Request):
-    """Handle incoming updates for Admin Bot"""
+    if not admin_app:
+        return {"status": "ok", "note": "admin bot not configured"}
     try:
         data = await request.json()
         update = Update.de_json(data, admin_app.bot)
@@ -113,5 +122,4 @@ async def admin_webhook(request: Request):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    # Note: On Render, 'uvicorn' command in Procfile is preferred, but this allows python main.py too
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
