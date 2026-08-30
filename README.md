@@ -6,24 +6,24 @@ Two web portals + two Telegram bots. One RAG pipeline, one Knowledge Base.
 
 ### Live Demo
 
-**App:** https://campus-saathi-system.onrender.com
-
 | Portal | Link |
 |---|---|
 | Student — ask questions | [campus-saathi-system.onrender.com/student/](https://campus-saathi-system.onrender.com/student/) |
 | Admin — upload & manage documents | [campus-saathi-system.onrender.com/admin/](https://campus-saathi-system.onrender.com/admin/) |
-
-Telegram: Student Bot & Admin Bot (webhook via `WEBHOOK_URL`)
+| Telegram — Student Bot | [@CampusSaathi_Bot](https://t.me/CampusSaathi_Bot) |
+| Telegram — Admin Bot | [@CampusSaathiAdmin_Bot](https://t.me/CampusSaathiAdmin_Bot) |
 
 ---
 
 ## Screenshots
 
-| Student Portal | Admin Portal | Telegram Bot |
-|---|---|---|
-| ![Student Portal](docs/screenshots/student-portal.png) | ![Admin Portal](docs/screenshots/admin-portal.png) | ![Telegram Bot](docs/screenshots/telegram-bot.png) |
+| Student Portal | Admin Portal |
+|---|---|
+| ![Student Portal](documents/screenshots/student_portal.png) | ![Admin Portal](documents/screenshots/admin_portal.png) |
 
-> Add 3 images to `docs/screenshots/` with the names above. Recommended size: 1280x720.
+| Student Telegram Bot | Admin Telegram Bot |
+|---|---|
+| ![Student Telegram](documents/screenshots/student_tele.png) | ![Admin Telegram](documents/screenshots/admin_tele.png) |
 
 ---
 
@@ -37,48 +37,57 @@ Telegram: Student Bot & Admin Bot (webhook via `WEBHOOK_URL`)
 
 ## Architecture
 
+### 1. Ingestion — Admin Side
+
+PDFs enter only from Admin surfaces. Parsed, chunked, and embedded into Qdrant.
+
 ```mermaid
-flowchart TD
-    A[Admin Uploads PDF] --> B[Firecrawl /parse<br/>PDF to Markdown]
-    B --> C[RecursiveCharacterTextSplitter<br/>1000 / 150 overlap]
-    C --> D[(Qdrant Cloud<br/>all-MiniLM-L6-v2<br/>384d)]
+flowchart LR
+    A1[Admin Portal<br>/admin] --> API[FastAPI<br/>POST /api/admin/documents]
+    A2[Admin Telegram Bot<br/>PDF upload] --> API
+    API --> B[Firecrawl /parse<br/>PDF → Markdown]
+    B --> C[RecursiveCharacterTextSplitter<br/>1000 chars / 150 overlap]
+    C --> D[(Qdrant Cloud<br/>all-MiniLM-L6-v2 · 384d<br/>payload: filename, chunk_index, content)]
 
-    E[Student Question<br/>Any Language] --> F[LangChain Chain<br/>Groq gpt-oss-120b]
-    F -->|Translate + Retrieve| D
-    D -->|Top-K Chunks| F
-    F --> G[Grounded Answer<br/>Same Language]
-
-    D --- H[FastAPI Server]
-    H --- I[Student Portal<br>/student]
-    H --- J[Admin Portal<br>/admin]
-    H --- K[Telegram Bots x2<br/>Webhooks]
-
-    style D fill:#6C5CE7,stroke:#fff,color:#fff
-    style F fill:#00B894,stroke:#fff,color:#fff
-    style H fill:#0984E3,stroke:#fff,color:#fff
+    style D fill:#6C5CE7,stroke:#333,color:#fff
+    style API fill:#0984E3,stroke:#333,color:#fff
+    style B fill:#FDCB6E,stroke:#333,color:#000
 ```
 
-<details>
-<summary><b>Prompt to generate a polished image (for ChatGPT / Gemini)</b></summary>
+### 2. Retrieval — Student Side
 
-Copy-paste this into ChatGPT image generation:
+Students query in any language. Answer is grounded in Qdrant chunks, returned in the same language.
 
+```mermaid
+flowchart LR
+    S1[Student Portal<br>/student] --> API2[FastAPI<br/>POST /api/chat]
+    S2[Student Telegram Bot<br/>any language] --> API2
+    API2 --> Q[QueryEngine<br/>LangChain + Groq gpt-oss-120b]
+    Q -->|1. Embed question| V[(Qdrant Cloud<br/>Vector Search<br/>top-K chunks)]
+    V -->|2. Retrieved context| Q
+    Q -->|3. Generate grounded answer| A[Grounded Answer<br/>same language]
+
+    style V fill:#6C5CE7,stroke:#333,color:#fff
+    style Q fill:#00B894,stroke:#333,color:#fff
+    style API2 fill:#0984E3,stroke:#333,color:#fff
 ```
-Create a modern, clean cloud architecture diagram for a RAG application called "Campus Saathi - IIIT Dharwad".
 
-Style: Minimal, isometric or flat, white background, use rounded rectangles, soft shadows, tech colors (violet for vector DB, green for LLM, blue for server).
+> Both flows share one **Qdrant collection** and are served from one **FastAPI** origin on Render. No duplicate logic.
 
-Show 3 flows:
-1. INGESTION FLOW (left): Admin Portal / Telegram Admin Bot -> Uploads PDF -> Firecrawl API (PDF to Markdown) -> LangChain RecursiveCharacterTextSplitter (1000/150) -> Qdrant Cloud Vector DB (with all-MiniLM-L6-v2 384d embeddings, show payload: filename, chunk_index, content)
-2. QUERY FLOW (right): Student Portal / Telegram Student Bot -> Asks question in any language -> LangChain + Groq gpt-oss-120b (Translate -> Vector Search -> Generate Answer) -> Qdrant Cloud (retrieve top-k chunks) -> Grounded Answer in same language
-3. SERVER (center bottom): FastAPI server connecting everything, serving Student Portal at /student, Admin Portal at /admin, and 2 Telegram Webhooks. Deploy on Render (single origin, no CORS).
+### 3. Multilingual Flow
 
-Label tech stack clearly. Title at top: "Campus Saathi - RAG Architecture". Add small legend at bottom. Make it interview-ready and suitable for README.
+Ask in any language — Hindi, Kannada, English, etc. The query is translated to English for retrieval, then Groq generates the grounded answer back in your original language.
+
+```mermaid
+flowchart LR
+    U[User: Hindi / Kannada / English] --> T1[Groq: Detect & Translate to English]
+    T1 --> R[Retrieve + Grounded Answer in English]
+    R --> T2[Groq: Translate to User Language]
+    T2 --> A[Answer in Same Language]
+
+    style T1 fill:#FDCB6E,stroke:#333,color:#000
+    style T2 fill:#00B894,stroke:#333,color:#fff
 ```
-
-Save the image as `docs/screenshots/architecture.png` and add `![Architecture](docs/screenshots/architecture.png)` above the mermaid if you prefer an image.
-
-</details>
 
 ---
 
@@ -173,3 +182,5 @@ Tests use FastAPI `TestClient` with faked adapters. Covers chat, upload, list, d
 ## Deployment
 
 Deployed on **Render** via `Procfile`. Auto-deploy on `master`.
+
+Env vars on Render: `GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `FIRECRAWL_API_KEY`, `TELEGRAM_STUDENT_BOT_TOKEN`, `TELEGRAM_ADMIN_BOT_TOKEN`, `WEBHOOK_URL=https://campus-saathi-system.onrender.com`.
