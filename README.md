@@ -2,8 +2,6 @@
 
 **RAG-powered campus assistant for IIIT Dharwad — ask in any language, get grounded answers from college documents.**
 
-Two web portals + two Telegram bots. One RAG pipeline, one Knowledge Base.
-
 ### Live Demo
 
 | Portal | Link |
@@ -42,12 +40,12 @@ Two web portals + two Telegram bots. One RAG pipeline, one Knowledge Base.
 PDFs enter only from Admin surfaces. Parsed, chunked, and embedded into Qdrant.
 
 ```mermaid
-flowchart LR
-    A1[Admin Portal<br>/admin] --> API[FastAPI<br/>POST /api/admin/documents]
+flowchart TD
+    A1[Admin Portal /admin] --> API[FastAPI<br/>POST /api/admin/documents]
     A2[Admin Telegram Bot<br/>PDF upload] --> API
     API --> B[Firecrawl /parse<br/>PDF → Markdown]
-    B --> C[RecursiveCharacterTextSplitter<br/>1000 chars / 150 overlap]
-    C --> D[(Qdrant Cloud<br/>all-MiniLM-L6-v2 · 384d<br/>payload: filename, chunk_index, content)]
+    B --> C[RecursiveCharacterTextSplitter<br/>1000 / 150 overlap]
+    C --> D[(Qdrant Cloud<br/>all-MiniLM-L6-v2 · 384d)]
 
     style D fill:#6C5CE7,stroke:#333,color:#fff
     style API fill:#0984E3,stroke:#333,color:#fff
@@ -59,11 +57,11 @@ flowchart LR
 Students query in any language. Answer is grounded in Qdrant chunks, returned in the same language.
 
 ```mermaid
-flowchart LR
-    S1[Student Portal<br>/student] --> API2[FastAPI<br/>POST /api/chat]
+flowchart TD
+    S1[Student Portal /student] --> API2[FastAPI POST /api/chat]
     S2[Student Telegram Bot<br/>any language] --> API2
     API2 --> Q[QueryEngine<br/>LangChain + Groq gpt-oss-120b]
-    Q -->|1. Embed question| V[(Qdrant Cloud<br/>Vector Search<br/>top-K chunks)]
+    Q -->|1. Embed question| V[(Qdrant Cloud<br/>Vector Search)]
     V -->|2. Retrieved context| Q
     Q -->|3. Generate grounded answer| A[Grounded Answer<br/>same language]
 
@@ -79,7 +77,7 @@ flowchart LR
 Ask in any language — Hindi, Kannada, English, etc. The query is translated to English for retrieval, then Groq generates the grounded answer back in your original language.
 
 ```mermaid
-flowchart LR
+flowchart TD
     U[User: Hindi / Kannada / English] --> T1[Groq: Detect & Translate to English]
     T1 --> R[Retrieve + Grounded Answer in English]
     R --> T2[Groq: Translate to User Language]
