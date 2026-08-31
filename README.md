@@ -187,16 +187,17 @@ Env vars on Render: `GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `FIRECRAWL_A
 
 ## RAG Evaluation
 
-Uses `ragas` (v0.4.3) + real `QueryEngine` on Qdrant to score retrieval + generation.
-
-![RAG Metrics](tests/fixtures/rag_results.png)
+Uses `ragas` (v0.4.3) + real `QueryEngine` on Qdrant to score retrieval + generation. No hardcoded scores — run the suite to generate results.
 
 ```bash
 # Quick sanity (dataset + retrieval, ~10s)
-dotenv run -- .venv/bin/python3 -m pytest tests/test_rag_ragas.py::TestRagEvaluation::test_all_five_metrics_are_computed -v -s
+dotenv run -- .venv-eval/bin/python -m pytest tests/test_rag_ragas.py::TestRagEvaluation::test_dataset_built -v -s
 
 # Full gate (slow — ~60s, Groq judge calls)
-dotenv run -- .venv/bin/python3 -m pytest tests/test_rag_ragas.py -v -s -m slow
+dotenv run -- .venv-eval/bin/python -m pytest tests/test_rag_ragas.py -v -s -m slow
+
+# Generate plot after a real run (produces tests/fixtures/rag_results.png + rag_real_scores.csv)
+dotenv run -- .venv-eval/bin/python scripts/run_rag_eval.py
 ```
 
-**5 metrics:** `faithfulness` (0.72) · `answer_relevancy` (0.68) · `context_recall` (0.58) · `context_precision` (0.64) · `answer_correctness` (0.55). Raw scores: `tests/fixtures/rag_real_scores.csv`. See `docs/README-rag-eval.md`.
+**5 metrics:** `faithfulness` (≥0.60) · `answer_relevancy` (≥0.65) · `context_recall` (≥0.55) · `context_precision` (≥0.60) · `answer_correctness` (≥0.50). See `docs/README-rag-eval.md`. Plot and CSV are generated artifacts, not checked-in fakes.

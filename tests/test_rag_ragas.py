@@ -1,5 +1,5 @@
 """
-RAG Evaluation — ragas 0.2.x metrics on the real pipeline.
+RAG Evaluation — ragas metrics on the real pipeline.
 
 Usage:
     pytest tests/test_rag_ragas.py -v -s
@@ -9,24 +9,26 @@ Requires: GROQ_API_KEY, QDRANT_URL, QDRANT_API_KEY set in .env
 """
 
 import os
+
 import pytest
 
-# Note: uses ragas_harness_simple (0.2.x API, stable)
-from tests.ragas_harness_simple import RagEvalHarness
+from tests.ragas_harness import RagEvalHarness
 
 THRESHOLDS = {
-    "faithfulness":       0.60,
-    "answer_relevancy":   0.65,
-    "context_recall":     0.55,
-    "context_precision":  0.60,
+    "faithfulness": 0.60,
+    "answer_relevancy": 0.65,
+    "context_recall": 0.55,
+    "context_precision": 0.60,
     "answer_correctness": 0.50,
 }
 
 
 def _score(raw) -> float:
     try:
-        if raw is None: return 0.0
+        if raw is None:
+            return 0.0
         import math
+
         v = float(raw)
         return 0.0 if math.isnan(v) else v
     except (TypeError, ValueError):
@@ -62,6 +64,7 @@ def print_result(result):
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="class")
 def harness():
     return RagEvalHarness()
@@ -74,19 +77,20 @@ def dataset(harness):
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.skipif(not os.getenv("GROQ_API_KEY"), reason="GROQ_API_KEY missing")
 @pytest.mark.skipif(
     not os.getenv("QDRANT_URL") or not os.getenv("QDRANT_API_KEY"),
     reason="Qdrant credentials missing",
 )
 class TestRagEvaluation:
-
     def test_dataset_built(self, harness):
         ds = harness.run("tests/fixtures/rag_evals.json")
         assert len(ds) == 5
-        assert all(c in ds.column_names for c in [
-            "user_input", "retrieved_contexts", "response", "ground_truth"
-        ])
+        assert all(
+            c in ds.column_names
+            for c in ["user_input", "retrieved_contexts", "response", "ground_truth"]
+        )
         non_empty = [r for r in ds["retrieved_contexts"] if r]
         assert len(non_empty) > 0, "Qdrant returned no chunks — ingest docs first"
 

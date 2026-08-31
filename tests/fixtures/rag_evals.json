@@ -1,27 +1,27 @@
 [
   {
-    "question": "What is the tuition fee per semester for B.Tech students?",
-    "ground_truth": "The tuition fee per semester for B.Tech students is Rs. 50,000 (Rupees Fifty Thousand only).",
+    "question": "What is the Fees per semester as per the Fee Structure for Batch 2023-24?",
+    "ground_truth": "As per the Fee Structure for Batch 2023-24, the 'Fees' per semester is Rs. 1,52,500 for all semesters I to VIII. Additional one-time charges at admission are Admission Fee Rs. 10,000 and Caution Deposit Rs. 20,000. Total payable in I Semester is Rs. 2,34,500 including hostel and mess advances.",
     "language": "English"
   },
   {
     "question": "What is the hostel fee per semester?",
-    "ground_truth": "The hostel fee per semester is Rs. 15,000 (Rupees Fifteen Thousand only), which includes mess charges.",
+    "ground_truth": "Hostel User fee charges per semester are: I Sem Rs. 22,000, II Sem Rs. 22,000, III Sem Rs. 25,000, IV Sem Rs. 25,000, V Sem Rs. 28,000, VI Sem Rs. 28,000, VII Sem Rs. 30,000, VIII Sem Rs. 30,000. An additional one-time Hostel Deposit of Rs. 10,000 is charged in I Semester. Mess Bill Advance is Rs. 20,000 per semester.",
     "language": "English"
   },
   {
     "question": "What time does the institute bus leave from the main gate on weekdays?",
-    "ground_truth": "The institute bus departs from the main gate at 7:30 AM on weekdays.",
+    "ground_truth": "On weekdays the Campus (main gate) to Transit Hostel buses depart at 7:30 AM (Bus 1, 2 and 3), 8:25 AM (Bus 1, 2 and 3), 10:00 AM, 11:00 AM etc. The full weekday schedule lists 7:30 AM as the first Campus to Transit Hostel departure.",
     "language": "English"
   },
   {
-    "question": "What is today's mess menu?",
-    "ground_truth": "The mess menu varies by day. Monday typically has Roti, Dal, Rice, and Sabzi. Friday typically has Biryani, Raita, and Dessert.",
+    "question": "What is the mess menu on Monday?",
+    "ground_truth": "For Mess 1 on Monday: Breakfast is Pongal, Poha Sev with Chutney, Black Chana Sprouts, Egg Bhurji, Fruits/Cornflakes, BBJ, Tea/Coffee/Bornvita. Lunch is Onion Rice, Dal Tadka, Jeera Aloo, Chawli Masala, Jaljeera with Pickle/Papad/Salad. Dinner and other days follow the weekly chart (e.g., Friday lunch is Veg & Egg Biriyani).",
     "language": "English"
   },
   {
-    "question": "When do the end-semester exams start for the 5th and 7th semester?",
-    "ground_truth": "The end-semester examinations for the 5th and 7th semester start on November 15, 2026.",
+    "question": "When is the Techno-Cultural Fest scheduled as per the Academic Calendar for August-November 2026?",
+    "ground_truth": "As per the Academic Calendar August-November 2026, the Techno-Cultural Fest is scheduled on 30-Oct and 31-Oct 2026.",
     "language": "English"
   }
 ]

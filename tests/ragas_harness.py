@@ -35,35 +35,53 @@ JUDGE_MODEL = "openai/gpt-oss-120b"
 
 
 def _make_judge_llm() -> Any:
-    """Build a Groq-backed InstructorLLM for ragas metrics.
+    """Build a Groq-backed judge LLM for ragas.
 
-    ragas 0.4+ collections metrics require InstructorBaseRagasLLM, not plain
-    ChatOpenAI.  We use ragas.llms.llm_factory with the OpenAI client
-    pointed at Groq's endpoint.
+    Supports both ragas 0.4 (llm_factory with client) and 0.2 (ChatOpenAI).
     """
-    from ragas.llms import llm_factory
-
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is not set — cannot create judge LLM")
-
     os.environ["OPENAI_API_KEY"] = api_key
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
-    return llm_factory(JUDGE_MODEL, client=client)
+
+    # Try ragas 0.4 path first (Instructor LLM)
+    try:
+        from ragas.llms import llm_factory
+        import inspect
+
+        sig = inspect.signature(llm_factory)
+        if "client" in sig.parameters:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+            return llm_factory(JUDGE_MODEL, client=client)
+        else:
+            # ragas 0.2 style llm_factory(base_url=...)
+            return llm_factory(JUDGE_MODEL, base_url=GROQ_BASE_URL)
+    except Exception:
+        # Fallback to plain ChatOpenAI (ragas 0.2 will inject it)
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=JUDGE_MODEL, api_key=api_key, base_url=GROQ_BASE_URL, temperature=0.1
+        )
 
 
 # ── Embedding model (for answer_relevancy — cosine similarity of question↔answer) ──
 
 def _make_embeddings() -> Any:
-    """Modern ragas embeddings for answer_relevancy / answer_correctness metrics.
+    """Ragas embeddings — modern factory for 0.4, HuggingFace for 0.2."""
+    try:
+        from ragas.embeddings.base import embedding_factory
 
-    Uses ragas.embedding_factory which returns BaseRagasEmbedding — required
-    by ragas 0.4+ collections metrics. We pin the local sentence-transformers
-    model so we don't depend on Groq hosting an OpenAI embedding endpoint.
-    """
-    from langchain_community.embeddings import HuggingFaceEmbeddings
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        return embedding_factory(
+            "huggingface",
+            model="sentence-transformers/all-MiniLM-L6-v2",
+        )
+    except Exception:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+
+        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
 # ── Harness ─────────────────────────────────────────────────────────────────
@@ -113,7 +131,12 @@ class RagEvalHarness:
 
             english_query, _ = self._translate(question)
             chunks, _ = self.kb.search_with_sources(english_query[:1000], limit=5)
-            answer, _ = self.engine.process_query(question, history=None)
+            _res = self.engine.process_query(question, history=None)
+            # handle 2- or 3-tuple (new web_search info)
+            if isinstance(_res, tuple) and len(_res) == 3:
+                answer, _, _ = _res
+            else:
+                answer, _ = _res
 
             records.append({
                 "user_input": question,
@@ -129,29 +152,53 @@ class RagEvalHarness:
     def evaluate(self, dataset: Any) -> Any:
         """Run ragas evaluate() with five standard metrics.
 
-        Returns a ragas EvaluationResult (has .to_pandas(), .scores)."""
-        from ragas import evaluate
-        from ragas.metrics.collections import (
+        Handles both ragas 0.4 (collections) and 0.2 (flat) APIs.
+        """
+        # Try modern 0.4 collections API
+        try:
+            from ragas import evaluate
+            from ragas.metrics.collections import (
+                faithfulness, answer_relevancy, context_recall,
+                context_precision, answer_correctness,
+            )
+
+            metrics = [
+                faithfulness.Faithfulness(llm=self.judge_llm),
+                answer_relevancy.AnswerRelevancy(llm=self.judge_llm, embeddings=self.embeddings),
+                context_recall.ContextRecall(llm=self.judge_llm),
+                context_precision.ContextPrecision(llm=self.judge_llm),
+                answer_correctness.AnswerCorrectness(llm=self.judge_llm, embeddings=self.embeddings),
+            ]
+            print(f"\n🧪 Running ragas 0.4 evaluate() on {len(dataset)} questions ...")
+            return evaluate(
+                dataset,
+                metrics=metrics,
+                raise_exceptions=False,
+                allow_nest_asyncio=True,
+            )
+        except Exception:
+            pass
+
+        # Fallback 0.2 API
+        from ragas import evaluate as eval02
+        from ragas.metrics import (
             faithfulness, answer_relevancy, context_recall,
             context_precision, answer_correctness,
         )
 
-        metrics = [
-            faithfulness.Faithfulness(llm=self.judge_llm),
-            answer_relevancy.AnswerRelevancy(llm=self.judge_llm, embeddings=self.embeddings),
-            context_recall.ContextRecall(llm=self.judge_llm),
-            context_precision.ContextPrecision(llm=self.judge_llm),
-            answer_correctness.AnswerCorrectness(llm=self.judge_llm, embeddings=self.embeddings),
-        ]
+        for m in [faithfulness, answer_relevancy, context_recall, context_precision, answer_correctness]:
+            m.llm = self.judge_llm
+        answer_relevancy.embeddings = self.embeddings
+        answer_correctness.embeddings = self.embeddings
 
-        print(f"\n🧪 Running ragas evaluate() on {len(dataset)} questions ...")
-        result = evaluate(
+        print(f"\n🧪 Running ragas 0.2 evaluate() on {len(dataset)} questions ...")
+        return eval02(
             dataset,
-            metrics=metrics,
+            metrics=[faithfulness, answer_relevancy, context_recall, context_precision, answer_correctness],
+            llm=self.judge_llm,
+            embeddings=self.embeddings,
             raise_exceptions=False,
-            allow_nest_asyncio=True,
         )
-        return result
 
 
 # ── Threshold-based assertions ────────────────────────────────────────────────
