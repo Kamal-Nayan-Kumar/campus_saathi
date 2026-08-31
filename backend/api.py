@@ -71,6 +71,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[str] = []
+    web_search_used: bool = False
+    web_search_query: str | None = None
+    web_sources: list[str] = []
 
 
 class DocumentResponse(BaseModel):
@@ -91,7 +94,17 @@ def chat(payload: ChatRequest, request: Request):
         raise HTTPException(status_code=422, detail="Message must not be empty.")
     try:
         engine = get_query_engine(request)
-        answer, sources = engine.process_query(message, payload.history)
+        result = engine.process_query(message, payload.history)
+        # Backward compat: process_query may return 2 or 3 values
+        if isinstance(result, tuple) and len(result) == 3:
+            answer, sources, web_search = result
+        elif isinstance(result, tuple) and len(result) == 2:
+            answer, sources = result
+            web_search = getattr(engine, "last_web_search", None) or {"used": False, "query": None, "urls": []}
+        else:
+            answer, sources = result[0], result[1]
+            web_search = {"used": False, "query": None, "urls": []}
+        web_search = web_search or {"used": False, "query": None, "urls": []}
     except ValueError as exc:  # missing configuration
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception:  # adapter failed at request time
@@ -99,7 +112,13 @@ def chat(payload: ChatRequest, request: Request):
             status_code=503,
             detail="The assistant can't reach its AI service right now. Please try again later.",
         )
-    return ChatResponse(answer=answer, sources=sources)
+    return ChatResponse(
+        answer=answer,
+        sources=sources,
+        web_search_used=bool(web_search.get("used")),
+        web_search_query=web_search.get("query"),
+        web_sources=web_search.get("urls") or [],
+    )
 
 
 @router.post("/api/admin/documents", response_model=DocumentResponse)

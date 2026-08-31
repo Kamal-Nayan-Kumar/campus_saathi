@@ -20,6 +20,10 @@ CONTEXT.md
 CONTEXT-MAP.md
 .scratch/
 
+# RAG eval generated artifacts (never commit fakes — regenerate via scripts/run_rag_eval.py)
+tests/fixtures/rag_results.png
+tests/fixtures/rag_real_scores.csv
+
 # docs/ is gitignored EXCEPT the RAG eval README we want on GitHub
 # docs/ mostly local; keep RAG eval doc
 !docs/README-rag-eval.md

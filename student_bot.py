@@ -53,7 +53,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Per-user history (last 5 pairs stored in context.user_data)
         history = context.user_data.get("history", [])
-        answer, sources = query_engine.process_query(text, history)
+        await status_msg.edit_text("Checking knowledge base… 🔍")
+        result = query_engine.process_query(text, history)
+        if isinstance(result, tuple) and len(result) == 3:
+            answer, sources, web_search = result
+        else:
+            answer, sources = result[0], result[1]
+            web_search = getattr(query_engine, "last_web_search", None) or {"used": False, "query": text, "urls": []}
+        web_search = web_search or {"used": False, "query": text, "urls": []}
+        if web_search.get("used"):
+            try:
+                await status_msg.edit_text(f"Searching iiitdwd.ac.in for \"{web_search.get('query', text)}\"… 🌐")
+            except Exception:
+                pass
+            # sources already are web urls if fallback happened
+            sources = web_search.get("urls") or sources
 
         # Save to history
         history.append({"role": "user", "content": text})
@@ -61,13 +75,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # keep last 10 entries (5 pairs)
         context.user_data["history"] = history[-10:]
 
-        # Append sources like portal does
+        # Append sources like portal does, with web search indicator
+        prefix = ""
+        if web_search.get("used"):
+            prefix = f"🌐 _Searched iiitdwd\\.ac\\.in for \"{web_search.get('query', text)}\"_\\n\\n"
+            # prefix is markdown; will be prepended before answer
         if sources:
             uniq = list(dict.fromkeys(sources))
             src_line = "\n\n📄 *Source:* " + ", ".join(f"`{s}`" for s in uniq[:3])
             if len(uniq) > 3:
                 src_line += f" +{len(uniq)-3} more"
-            answer = answer + src_line
+            answer = prefix + answer + src_line
+        elif web_search.get("used"):
+            answer = prefix + answer
 
         # Telegram limit 4096
         if len(answer) > 4000:

@@ -150,41 +150,72 @@
       padding: 8px 14px;
       font-size: 0.88rem;
     }
-
-    /* Source tag at bottom of bot bubble */
-    .source-tag {
-      display: inline-block;
+    .web-search-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      max-width: 100%;
+      overflow-wrap: anywhere;
       margin-top: 10px;
-      padding: 4px 10px;
-      border: 1px solid var(--line);
+      padding: 5px 10px;
+      border: 1px solid #C9D6FF;
       border-radius: 999px;
       font-size: 0.78rem;
-      color: var(--muted);
-      background: var(--paper);
-      cursor: default;
+      color: #3B5B9A;
+      background: #EEF2FF;
       font-family: var(--font-mono);
-      letter-spacing: 0.01em;
     }
-    .source-tag .source-label {
-      color: var(--ink);
-      font-weight: 600;
-    }
-    .source-wrap {
-      margin-top: 8px;
-    }
-    .source-tag[onclick] {
-      cursor: pointer;
-    }
-    .source-detail {
-      margin-top: 6px;
-      padding: 6px 10px;
+    .web-search-banner a { color: inherit; text-decoration: underline; }
+
+    /* Sources box — always expanded, grouped web_search / KB */
+    .sources-box {
+      margin-top: 10px;
+      padding: 10px 12px;
       background: var(--paper);
       border: 1px solid var(--line);
-      border-radius: 8px;
-      font-size: 0.8rem;
+      border-radius: 10px;
+      font-size: 0.76rem;
       color: var(--muted);
       font-family: var(--font-mono);
       line-height: 1.5;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .sources-box-title {
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 6px;
+      letter-spacing: 0.01em;
+    }
+    .sources-section-label {
+      font-weight: 600;
+      color: var(--ink);
+      margin-top: 8px;
+      font-size: 0.74rem;
+    }
+    .sources-section-label:first-of-type { margin-top: 0; }
+    .sources-list {
+      margin: 2px 0 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .sources-list li {
+      padding-left: 12px;
+      position: relative;
+    }
+    .sources-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--muted);
+    }
+    .sources-list a { color: var(--muted); text-decoration: none; word-break: break-all; }
+    .sources-list a:hover { text-decoration: underline; }
+    .bubble.bot {
+      overflow-wrap: anywhere;
+      min-width: 0;
     }
 
     /* Empty state */
@@ -364,14 +395,16 @@
       });
     });
 
-    function addBubble(text, cls, sources) {
+    function addBubble(text, cls, sources, webSearch) {
       if (emptyState && emptyState.parentNode) emptyState.remove();
       const div = document.createElement("div");
       div.className = "bubble " + cls;
       if (cls === "bot") {
         let html = marked.parse(text);
-        if (sources && sources.length > 0) {
-          html += renderSourceTag(sources);
+        const hasWeb = webSearch && webSearch.used && (webSearch.urls || webSearch.web_sources || []).length > 0;
+        const hasKB = sources && sources.length > 0;
+        if (hasWeb || hasKB) {
+          html += renderSourceTag(sources, webSearch);
         }
         div.innerHTML = html;
       } else {
@@ -382,46 +415,64 @@
       return div;
     }
 
-    function renderSourceTag(sources) {
-      const isMobile = window.innerWidth <= 520;
-      // "Source:" black, filename muted
-      const sourceLabel = '<span class="source-label">Source:</span>';
-      const sourcesLabel = '<span class="source-label">Sources (' + sources.length + '):</span>';
-      // On mobile, collapse by default; on desktop, show all at once
-      if (isMobile) {
-        return (
-          '<div class="source-wrap">' +
-          '<span class="source-tag" onclick="toggleSource(this)">📄 ' +
-          '<span class="source-label">Tap</span> to see ' + sources.length + ' sources' +
-          ' ▼</span>' +
-          '<div class="source-detail" style="display:none">' +
-          sources.map(s => '<span class="source-label">•</span> ' + escapeHtml(s)).join("<br>") +
-          '</div></div>'
-        );
+    function renderWebSearchBanner(ws) {
+      const q = escapeHtml(ws.query || "");
+      const urls = ws.urls || ws.web_sources || [];
+      let links = "";
+      if (urls.length) {
+        links = " — " + urls.slice(0,2).map(u => '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">' + escapeHtml(new URL(u).hostname) + '</a>').join(", ");
       }
-      if (sources.length === 1) {
-        return (
-          '<div class="source-tag">📄 ' + sourceLabel + ' ' +
-          '<span>' + escapeHtml(sources[0]) + '</span></div>'
-        );
-      }
-      return (
-        '<div class="source-tag">📄 ' + sourcesLabel + ' ' +
-        sources.map(s => '<span>' + escapeHtml(s) + '</span>').join(", ") +
-        '</div>'
-      );
+      return '<div class="web-search-banner">🌐 Searched iiitdwd.ac.in for "' + q + '"' + links + '</div>';
     }
 
-    function toggleSource(tag) {
-      const detail = tag.nextElementSibling;
-      if (!detail) return;
-      if (detail.style.display === "none") {
-        detail.style.display = "block";
-        tag.innerHTML = tag.innerHTML.replace(" ▼", " ▲");
-      } else {
-        detail.style.display = "none";
-        tag.innerHTML = tag.innerHTML.replace(" ▲", " ▼");
+    function shortenSource(s) {
+      let t = s;
+      if (t.startsWith('website:iiitdwd.ac.in:')) t = t.replace('website:iiitdwd.ac.in:', '');
+      return t;
+    }
+    function renderSourceTag(sources, webSearch) {
+      // sources = KB sources (data.sources); webSearch.urls = web sources
+      const kbSources = (sources || []).slice();
+      const webUrls = (webSearch && (webSearch.urls || webSearch.web_sources)) ? (webSearch.urls || webSearch.web_sources).slice() : [];
+      const isWeb = webSearch && webSearch.used && webUrls.length > 0;
+
+      // dedup KB that duplicates web urls (backend returns same when fallback)
+      const webSet = new Set(webUrls);
+      const kbFiltered = kbSources.filter(s => !webSet.has(s));
+
+      // nothing to show
+      if (!isWeb && kbFiltered.length === 0 && kbSources.length === 0) return "";
+      if (isWeb && webUrls.length === 0 && kbFiltered.length === 0) return "";
+
+      let html = '<div class="sources-box">';
+      html += '<div class="sources-box-title">sources:</div>';
+
+      if (isWeb) {
+        html += '<div class="sources-section-label">web_search:</div>';
+        html += '<ul class="sources-list">';
+        for (const u of webUrls) {
+          const display = escapeHtml(shortenSource(u));
+          const href = escapeHtml(u);
+          // render as link if valid url
+          const isUrl = /^https?:\/\//i.test(u);
+          html += isUrl ? `<li><a href="${href}" target="_blank" rel="noopener">${display}</a></li>` : `<li>${display}</li>`;
+        }
+        html += '</ul>';
       }
+
+      // KB section — show only if any KB sources remain
+      const kbToShow = isWeb ? kbFiltered : kbSources;
+      if (kbToShow.length > 0) {
+        html += '<div class="sources-section-label">KB:</div>';
+        html += '<ul class="sources-list">';
+        for (const s of kbToShow) {
+          html += `<li>${escapeHtml(shortenSource(s))}</li>`;
+        }
+        html += '</ul>';
+      }
+      // if no KB and no web, fallback — shouldn't happen
+      html += '</div>';
+      return html;
     }
 
     function escapeHtml(str) {
@@ -441,6 +492,10 @@
       const outer = document.getElementById("thread-outer");
       outer.scrollTop = outer.scrollHeight;
       return div;
+    }
+    function setThinkingWebSearch(query) {
+      const el = document.getElementById("thinking");
+      if (el) el.textContent = 'Searching iiitdwd.ac.in for "' + query + '"… 🌐';
     }
 
     function addError(text) {
@@ -462,27 +517,43 @@
       sendBtn.disabled = true;
       const thinking = addThinking();
 
+      let stage1, stage2;
       try {
         // Send last 5 Q&A pairs as conversation context
         const history = loadHistory();
-        // Format as [{role:"user",content:...}, {role:"assistant",content:...}, ...]
-        // We only need the last 5 pairs = 10 entries max; trim to last 10
         const historyPayload = history.slice(-10);
 
+        // Staged thinking: Checking knowledge base -> Searching iiitdwd.ac.in
+        stage1 = setTimeout(() => {
+          const el = document.getElementById("thinking");
+          if (el) el.textContent = "Checking knowledge base…";
+        }, 900);
+        stage2 = setTimeout(() => {
+          const el = document.getElementById("thinking");
+          if (el) {
+            const qShort = question.length > 60 ? question.slice(0,60) + "…" : question;
+            el.textContent = `Searching iiitdwd.ac.in for "${qShort}"… 🌐`;
+          }
+        }, 2600);
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: question, history: historyPayload }),
         });
+        clearTimeout(stage1);
+        clearTimeout(stage2);
         thinking.remove();
         if (!res.ok) throw new Error("Server returned " + res.status);
         const data = await res.json();
-        addBubble(data.answer, "bot", data.sources || []);
-        // Save this Q&A pair to local history
+        const ws = { used: !!data.web_search_used, query: data.web_search_query || question, urls: data.web_sources || [], web_sources: data.web_sources || [] };
+        // pass KB sources separately; renderSourceTag will group web_search + KB
+        addBubble(data.answer, "bot", data.sources || [], ws);
         appendTurn({ role: "user", content: question });
         appendTurn({ role: "assistant", content: data.answer });
       } catch (err) {
-        thinking.remove();
+        clearTimeout(stage1);
+        clearTimeout(stage2);
+        try { thinking.remove(); } catch {}
         addError("Can't reach the assistant right now. Check your connection and try again.");
       } finally {
         sendBtn.disabled = false;
