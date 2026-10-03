@@ -9,6 +9,7 @@ plain langchain-openai client pointed at OpenRouter/Groq OpenAI-compatible base 
 
 import json
 import os
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,7 +21,7 @@ from langchain_openai import ChatOpenAI
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 # Use env LLM_MODEL if set, else auto: openrouter/free for OpenRouter, groq/compound-mini for Groq
-DEFAULT_GROQ_MODEL = "groq/compound-mini"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_OPENROUTER_MODEL = "openrouter/free"
 
 # phrases that indicate the LLM found no answer in the provided context
