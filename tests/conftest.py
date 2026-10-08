@@ -3,7 +3,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import mount_portals, router
-from tests.fakes import FakeKnowledgeBase, FakePDFProcessor, FakeQueryEngine, FakeWebsiteCrawler
+from tests.fakes import (
+    FakeKnowledgeBase,
+    FakeMissLog,
+    FakePDFProcessor,
+    FakeQueryEngine,
+    FakeWebsiteCrawler,
+)
 
 
 @pytest.fixture
@@ -17,6 +23,7 @@ def app():
     application.state.pdf_processor = FakePDFProcessor(kb)
     application.state.query_engine = FakeQueryEngine()
     application.state.website_crawler = FakeWebsiteCrawler(kb)
+    application.state.miss_log = FakeMissLog()
     return application
 
 

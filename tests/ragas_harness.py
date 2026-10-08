@@ -132,7 +132,7 @@ class RagEvalHarness:
             english_query, _ = self._translate(question)
             chunks, _ = self.kb.search_with_sources(english_query[:1000], limit=5)
             _res = self.engine.process_query(question, history=None)
-            # handle 2- or 3-tuple (new web_search info)
+            # handle 2- or 3-tuple (third value is miss info)
             if isinstance(_res, tuple) and len(_res) == 3:
                 answer, _, _ = _res
             else:

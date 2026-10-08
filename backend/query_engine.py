@@ -1,10 +1,15 @@
 """QueryEngine (ADR-0001): the RAG chain on LangChain + OpenRouter/Groq.
 
 Flow: detect language + translate to English -> similarity search in
-the Knowledge Base -> if missing, fallback to WebSearchTool (Firecrawl search
-on iiitdwd.ac.in) -> answer grounded in retrieved context, replied in the
+the Knowledge Base -> answer grounded in retrieved context, replied in the
 user's language. Model: openrouter/free (or groq/compound-mini) via the
 plain langchain-openai client pointed at OpenRouter/Groq OpenAI-compatible base URL.
+
+The Knowledge Base is the only source of truth on this path (ADR-0004). There
+is no runtime web search: when retrieval can't answer, the query goes to the
+MissLog for the admin to act on, and the student gets an honest "not found".
+Keeping the college website fresh is the admin's /crawl job, not the
+student's per-query cost.
 """
 
 import json
@@ -16,6 +21,8 @@ from zoneinfo import ZoneInfo
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+
+from backend.miss_log import MissLog
 
 # --- LLM provider: OpenRouter (free) if OPENROUTER_API_KEY set, else Groq ---
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -87,7 +94,7 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 
 
 class QueryEngine:
-    def __init__(self, knowledge_base, web_search_tool=None):
+    def __init__(self, knowledge_base, miss_log=None):
         # Prefer OpenRouter if key present, else Groq — keeps backward compat
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
@@ -109,8 +116,10 @@ class QueryEngine:
             raise ValueError("OPENROUTER_API_KEY or GROQ_API_KEY must be set in environment variables")
 
         self.knowledge_base = knowledge_base
-        self.web_search_tool = web_search_tool  # injected for tests; lazy otherwise
-        self.last_web_search: dict | None = None
+        # injected for tests; defaults to a JSONL log the admin reads
+        self.miss_log = miss_log if miss_log is not None else MissLog()
+        # Surfaced on the response so the UI can say "we don't have this yet"
+        self.last_was_miss: bool = False
         self.llm = ChatOpenAI(
             model=model,
             api_key=api_key,
@@ -134,22 +143,31 @@ class QueryEngine:
             return True
         return False
 
-    def _get_web_search_tool(self):
-        if self.web_search_tool is not None:
-            return self.web_search_tool
-        try:
-            from backend.web_search import WebSearchTool
-
-            self.web_search_tool = WebSearchTool()
-            return self.web_search_tool
-        except Exception as e:
-            print(f"WebSearchTool init failed: {e}")
-            return None
+    def _not_found_message(self, language: str, current_date: str) -> str:
+        """Honest miss, in the student's language. No promise of a web search."""
+        msg = (
+            "I don't have that in the college documents yet. "
+            "I've noted your question so the admin can add it — "
+            "try rephrasing, or contact the administration at info@iiitdwd.ac.in."
+        )
+        if language.lower() not in ("english", "en"):
+            try:
+                msg = self.answer_chain.invoke(
+                    {
+                        "context": "Translate the following message to " + language + ": " + msg,
+                        "question": "Translate to " + language,
+                        "language": language,
+                        "current_date": current_date,
+                    }
+                )
+            except Exception:
+                pass
+        return msg
 
     def process_query(self, user_query: str, history: list[dict] = None) -> tuple[str, list[str], dict]:
         """
-        Returns (answer, sources, web_search) where web_search is
-        {"used": bool, "query": str, "urls": list[str]}.
+        Returns (answer, sources, miss) where miss is
+        {"missed": bool, "query": str, "count": int | None}.
         Backward compat: callers unpacking 2 values still work via len check.
         """
         try:
@@ -190,96 +208,43 @@ class QueryEngine:
                     }
                 )
 
-            # Step 3: try Knowledge Base first
-            web_search_info: dict = {"used": False, "query": english_query, "urls": []}
-            self.last_web_search = web_search_info
+            # Step 3: answer from the Knowledge Base, or record a miss (ADR-0004)
+            self.last_was_miss = False
 
             if context_chunks:
                 kb_answer = _generate(context_chunks)
                 if not self._is_missing_answer(kb_answer):
                     unique_sources = list(dict.fromkeys(source_filenames))
-                    self.last_web_search = {"used": False, "query": english_query, "urls": []}
                     return (
                         kb_answer or "Sorry, something went wrong. Please try again later.",
                         unique_sources,
-                        self.last_web_search,
+                        {"missed": False, "query": english_query, "count": None},
                     )
-                print(f"KB miss detected for '{english_query}', falling back to web search")
+                print(f"KB miss detected for '{english_query}' — logging for admin")
             else:
-                print(f"No KB chunks for '{english_query}', trying web search")
+                print(f"No KB chunks for '{english_query}' — logging for admin")
 
-            # Step 4: fallback to WebSearchTool (Firecrawl on iiitdwd.ac.in)
-            web_tool = self._get_web_search_tool()
-            if web_tool is None:
-                self.last_web_search = {"used": False, "query": english_query, "urls": []}
-                return (
-                    "I couldn't find this information in the uploaded documents and also not on the IIIT Dharwad website (iiitdwd.ac.in). Please try rephrasing or contact the admin.",
-                    [],
-                    self.last_web_search,
-                )
-
-            web_search_info["used"] = True
-            self.last_web_search = web_search_info
-            try:
-                web_chunks, web_urls = web_tool.search_and_scrape(english_query)
-            except Exception as e:
-                print(f"Web search failed: {e}")
-                web_chunks, web_urls = [], []
-
-            web_search_info["urls"] = web_urls
-            self.last_web_search = web_search_info
-
-            if not web_chunks:
-                msg = (
-                    "I couldn't find this information in the uploaded documents and "
-                    "also not on the IIIT Dharwad website (iiitdwd.ac.in). "
-                    "Please try rephrasing your question or contact the administration at info@iiitdwd.ac.in."
-                )
-                if language.lower() not in ("english", "en"):
-                    try:
-                        msg = self.answer_chain.invoke(
-                            {
-                                "context": "Translate the following message to " + language + ": " + msg,
-                                "question": "Translate to " + language,
-                                "language": language,
-                                "current_date": current_date,
-                            }
-                        )
-                    except Exception:
-                        pass
-                return msg, [], web_search_info
-
-            web_answer = _generate(web_chunks)
-            if self._is_missing_answer(web_answer):
-                msg = (
-                    "I checked the uploaded documents and searched the IIIT Dharwad website "
-                    f"(iiitdwd.ac.in) for '{english_query}' but couldn't find relevant information. "
-                    "Please try rephrasing or contact the administration."
-                )
-                if language.lower() not in ("english", "en"):
-                    try:
-                        msg = self.answer_chain.invoke(
-                            {
-                                "context": "Translate to " + language + ": " + msg,
-                                "question": "Translate",
-                                "language": language,
-                                "current_date": current_date,
-                            }
-                        )
-                    except Exception:
-                        pass
-                return msg, web_urls, web_search_info
-
-            return web_answer or "Sorry, something went wrong. Please try again later.", web_urls, web_search_info
+            # Miss: record it so the admin knows what to crawl or upload.
+            entry = self.miss_log.record(english_query, language)
+            self.last_was_miss = True
+            return (
+                self._not_found_message(language, current_date),
+                [],
+                {
+                    "missed": True,
+                    "query": english_query,
+                    "count": entry.get("count") if entry else None,
+                },
+            )
 
         except Exception as exc:
             print(f"CRITICAL ERROR in QueryEngine: {exc}")
-            self.last_web_search = {"used": False, "query": user_query, "urls": []}
+            self.last_was_miss = False
             return (
                 "Sorry, the assistant can't reach its AI service right now. "
                 "Please try again later.",
                 [],
-                self.last_web_search,
+                {"missed": False, "query": user_query, "count": None},
             )
 
     def _translate(self, user_query: str) -> tuple[str, str]:

@@ -55,15 +55,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("Checking knowledge base… 🔍")
         result = query_engine.process_query(text, history)
         if isinstance(result, tuple) and len(result) == 3:
-            answer, sources, web_search = result
+            answer, sources, miss = result
         else:
             answer, sources = result[0], result[1]
-            web_search = getattr(query_engine, "last_web_search", None) or {"used": False, "query": text, "urls": []}
-        if web_search.get("used"):
-            try:
-                await status_msg.edit_text(f"Searching iiitdwd.ac.in for \"{web_search.get('query', text)}\"… 🌐")
-            except Exception:
-                pass
+            miss = {"missed": False, "query": None, "count": None}
+        # ADR-0004: no web-search status message. The Knowledge Base is the
+        # only source; an unanswered question is logged for the admin instead.
 
         # Save to history
         history.append({"role": "user", "content": text})

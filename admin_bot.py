@@ -1,6 +1,7 @@
 import os
 import tempfile
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from backend.miss_log import MissLog
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from backend.pdf_processor import PDFProcessor
 from backend.vector_store import KnowledgeBase
@@ -25,9 +26,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I manage the Knowledge Base for the Admin Portal.\n"
         "• Send *PDF, Excel, Word (.docx), TXT or MD* to ingest\n"
         "• Use /crawl to refresh the college website (iiitdwd.ac.in) — recursively crawls up to 20 linked pages, not just homepage\n"
+        "• Use /misses to see questions students asked that we couldn't answer\n"
         "• Use /status to see what's ingested",
         parse_mode="Markdown"
     )
+
+async def misses_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Questions students asked that the Knowledge Base couldn't answer.
+
+    This is where web search used to fire silently per student query (ADR-0004).
+    Now you see the demand and decide what to crawl or upload.
+    """
+    log = MissLog()
+    rows = log.list_misses(limit=20)
+    if not rows:
+        await update.message.reply_text(
+            "✅ No unanswered questions logged.\nStudents are being served from the Knowledge Base."
+        )
+        return
+    lines = [
+        f"• `{r['query']}` — asked {r['count']}× • {r['language'] or '?'} • {r['last_seen'][:10]}"
+        for r in rows
+    ]
+    await update.message.reply_text(
+        "❓ *Unanswered questions* "
+        f"({len(rows)} distinct, {log.total_queries()} total)\n\n"
+        + "\n".join(lines)
+        + "\n\nUpload the source doc, or /crawl if the college website changed.\n"
+        "/clearmisses to reset this log.",
+        parse_mode="Markdown"
+    )
+
+async def clearmisses_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    removed = MissLog().clear()
+    await update.message.reply_text(f"🧹 Cleared {removed} logged questions.")
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -170,6 +202,8 @@ def init_admin_app():
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("crawl", crawl_cmd))
     app.add_handler(CommandHandler("refresh", crawl_cmd))
+    app.add_handler(CommandHandler("misses", misses_cmd))
+    app.add_handler(CommandHandler("clearmisses", clearmisses_cmd))
     app.add_handler(CallbackQueryHandler(handle_crawl_callback, pattern=r"^crawl:"))
     app.add_handler(CallbackQueryHandler(handle_ingest_callback, pattern=r"^ingest:"))
     # Documents: handle allowed types via filter, but we check inside

@@ -8,6 +8,8 @@ API contract:
     POST   /api/admin/documents          multipart file -> {filename, chunks}
     GET    /api/admin/documents          -> {documents: [{filename, chunks}]}
     DELETE /api/admin/documents/{filename}            -> removes that file's chunks
+    GET    /api/admin/misses             -> questions the Knowledge Base couldn't answer
+    DELETE /api/admin/misses             -> clear that log
     POST   /api/admin/website/crawl      -> crawl iiitdwd.ac.in via Firecrawl
     GET    /api/admin/website/status     -> crawl status & website docs
     DELETE /api/admin/website            -> remove all website:* docs
@@ -21,6 +23,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from backend.miss_log import MissLog
 from backend.pdf_processor import PDFProcessor
 from backend.query_engine import QueryEngine
 from backend.vector_store import KnowledgeBase
@@ -61,6 +64,10 @@ def get_website_crawler(request: Request) -> WebsiteCrawler:
     return _get_state(request, "website_crawler", build)
 
 
+def get_miss_log(request: Request) -> MissLog:
+    return _get_state(request, "miss_log", MissLog)
+
+
 # --- Schemas ---
 
 class ChatRequest(BaseModel):
@@ -71,9 +78,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[str] = []
-    web_search_used: bool = False
-    web_search_query: str | None = None
-    web_sources: list[str] = []
+    # ADR-0004: no runtime web search. A miss is logged for the admin instead.
+    missed: bool = False
+    miss_count: int | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -97,14 +104,14 @@ def chat(payload: ChatRequest, request: Request):
         result = engine.process_query(message, payload.history)
         # Backward compat: process_query may return 2 or 3 values
         if isinstance(result, tuple) and len(result) == 3:
-            answer, sources, web_search = result
+            answer, sources, miss = result
         elif isinstance(result, tuple) and len(result) == 2:
             answer, sources = result
-            web_search = getattr(engine, "last_web_search", None) or {"used": False, "query": None, "urls": []}
+            miss = {"missed": False, "query": None, "count": None}
         else:
             answer, sources = result[0], result[1]
-            web_search = {"used": False, "query": None, "urls": []}
-        web_search = web_search or {"used": False, "query": None, "urls": []}
+            miss = {"missed": False, "query": None, "count": None}
+        miss = miss or {"missed": False, "query": None, "count": None}
     except ValueError as exc:  # missing configuration
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception:  # adapter failed at request time
@@ -115,9 +122,8 @@ def chat(payload: ChatRequest, request: Request):
     return ChatResponse(
         answer=answer,
         sources=sources,
-        web_search_used=bool(web_search.get("used")),
-        web_search_query=web_search.get("query"),
-        web_sources=web_search.get("urls") or [],
+        missed=bool(miss.get("missed")),
+        miss_count=miss.get("count"),
     )
 
 
@@ -162,6 +168,42 @@ def delete_document(filename: str, request: Request):
     if not kb.delete_document(filename):
         raise HTTPException(status_code=404, detail=f"'{filename}' not found.")
     return {"status": "deleted", "filename": filename}
+
+
+# --- Unanswered questions (ADR-0004) ---
+
+class MissResponse(BaseModel):
+    query: str
+    language: str | None = None
+    count: int = 1
+    first_seen: str
+    last_seen: str
+
+
+class MissListResponse(BaseModel):
+    misses: list[MissResponse] = []
+    total_queries: int = 0
+
+
+@router.get("/api/admin/misses", response_model=MissListResponse)
+def list_misses(request: Request, limit: int = 20):
+    """What students asked that the Knowledge Base couldn't answer.
+
+    This is the replacement for runtime web search: instead of the student
+    path scraping iiitdwd.ac.in per miss, the admin sees the demand and
+    decides what to crawl or upload.
+    """
+    log = get_miss_log(request)
+    return MissListResponse(
+        misses=[MissResponse(**m) for m in log.list_misses(limit)],
+        total_queries=log.total_queries(),
+    )
+
+
+@router.delete("/api/admin/misses")
+def clear_misses(request: Request):
+    log = get_miss_log(request)
+    return {"status": "cleared", "entries": log.clear()}
 
 
 # --- Website crawl (Firecrawl, iiitdwd.ac.in) ---

@@ -108,10 +108,13 @@ flowchart TD
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/chat` | `{message}` → `{answer}` |
+| `POST` | `/api/chat` | `{message}` → `{answer, sources, missed}` |
 | `POST` | `/api/admin/documents` | Upload PDF → `{filename, chunks}` |
 | `GET` | `/api/admin/documents` | List all documents |
 | `DELETE` | `/api/admin/documents/{filename}` | Delete a document |
+| `GET` | `/api/admin/misses` | Questions the Knowledge Base couldn't answer |
+| `DELETE` | `/api/admin/misses` | Clear that log |
+| `POST` | `/api/admin/website/crawl` | Re-crawl iiitdwd.ac.in into the KB |
 
 Portals: `/student` and `/admin` (same origin). Telegram webhooks: `POST /student-webhook` and `POST /admin-webhook`.
 
@@ -128,6 +131,7 @@ campus_saathi/
 │   ├── api.py              # Routes + portal mounting
 │   ├── vector_store.py     # Qdrant adapter (KnowledgeBase)
 │   ├── pdf_processor.py    # Firecrawl + chunking + upsert
+│   ├── miss_log.py         # Unanswered questions, for the admin (ADR-0004)
 │   ├── query_engine.py     # LangChain RAG chain on Groq
 │   └── website_crawler.py  # College site crawler (Firecrawl)
 ├── frontend/

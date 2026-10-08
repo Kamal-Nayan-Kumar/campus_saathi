@@ -168,7 +168,7 @@
     }
     .web-search-banner a { color: inherit; text-decoration: underline; }
 
-    /* Sources box — always expanded, grouped web_search / KB */
+    /* Sources box — always expanded, Knowledge Base only (ADR-0004) */
     .sources-box {
       margin-top: 10px;
       padding: 10px 12px;
@@ -395,17 +395,14 @@
       });
     });
 
-    function addBubble(text, cls, sources, webSearch) {
+    function addBubble(text, cls, sources, miss) {
       if (emptyState && emptyState.parentNode) emptyState.remove();
       const div = document.createElement("div");
       div.className = "bubble " + cls;
       if (cls === "bot") {
         let html = marked.parse(text);
-        const hasWeb = webSearch && webSearch.used && (webSearch.urls || webSearch.web_sources || []).length > 0;
-        const hasKB = sources && sources.length > 0;
-        if (hasWeb || hasKB) {
-          html += renderSourceTag(sources, webSearch);
-        }
+        if (miss && miss.missed) html += renderMissNotice(miss);
+        if (sources && sources.length > 0) html += renderSourceTag(sources, miss);
         div.innerHTML = html;
       } else {
         div.textContent = text;
@@ -415,14 +412,10 @@
       return div;
     }
 
-    function renderWebSearchBanner(ws) {
-      const q = escapeHtml(ws.query || "");
-      const urls = ws.urls || ws.web_sources || [];
-      let links = "";
-      if (urls.length) {
-        links = " — " + urls.slice(0,2).map(u => '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">' + escapeHtml(new URL(u).hostname) + '</a>').join(", ");
-      }
-      return '<div class="web-search-banner">🌐 Searched iiitdwd.ac.in for "' + q + '"' + links + '</div>';
+    function renderMissNotice(miss) {
+      const n = miss && miss.count;
+      const suffix = n > 1 ? ' (asked ' + n + ' times)' : '';
+      return '<div class="web-search-banner">📝 Not in the college documents yet — logged for the admin' + escapeHtml(suffix) + '</div>';
     }
 
     function shortenSource(s) {
@@ -430,47 +423,20 @@
       if (t.startsWith('website:iiitdwd.ac.in:')) t = t.replace('website:iiitdwd.ac.in:', '');
       return t;
     }
-    function renderSourceTag(sources, webSearch) {
-      // sources = KB sources (data.sources); webSearch.urls = web sources
+    function renderSourceTag(sources, miss) {
+      // ADR-0004: every source comes from the Knowledge Base. A miss notice is
+      // rendered separately; there are no web_search sources to group.
       const kbSources = (sources || []).slice();
-      const webUrls = (webSearch && (webSearch.urls || webSearch.web_sources)) ? (webSearch.urls || webSearch.web_sources).slice() : [];
-      const isWeb = webSearch && webSearch.used && webUrls.length > 0;
-
-      // dedup KB that duplicates web urls (backend returns same when fallback)
-      const webSet = new Set(webUrls);
-      const kbFiltered = kbSources.filter(s => !webSet.has(s));
-
-      // nothing to show
-      if (!isWeb && kbFiltered.length === 0 && kbSources.length === 0) return "";
-      if (isWeb && webUrls.length === 0 && kbFiltered.length === 0) return "";
+      if (kbSources.length === 0) return "";
 
       let html = '<div class="sources-box">';
       html += '<div class="sources-box-title">sources:</div>';
-
-      if (isWeb) {
-        html += '<div class="sources-section-label">web_search:</div>';
-        html += '<ul class="sources-list">';
-        for (const u of webUrls) {
-          const display = escapeHtml(shortenSource(u));
-          const href = escapeHtml(u);
-          // render as link if valid url
-          const isUrl = /^https?:\/\//i.test(u);
-          html += isUrl ? `<li><a href="${href}" target="_blank" rel="noopener">${display}</a></li>` : `<li>${display}</li>`;
-        }
-        html += '</ul>';
+      html += '<div class="sources-section-label">KB:</div>';
+      html += '<ul class="sources-list">';
+      for (const s of kbSources) {
+        html += `<li>${escapeHtml(shortenSource(s))}</li>`;
       }
-
-      // KB section — show only if any KB sources remain
-      const kbToShow = isWeb ? kbFiltered : kbSources;
-      if (kbToShow.length > 0) {
-        html += '<div class="sources-section-label">KB:</div>';
-        html += '<ul class="sources-list">';
-        for (const s of kbToShow) {
-          html += `<li>${escapeHtml(shortenSource(s))}</li>`;
-        }
-        html += '</ul>';
-      }
-      // if no KB and no web, fallback — shouldn't happen
+      html += '</ul>';
       html += '</div>';
       return html;
     }
@@ -493,11 +459,6 @@
       outer.scrollTop = outer.scrollHeight;
       return div;
     }
-    function setThinkingWebSearch(query) {
-      const el = document.getElementById("thinking");
-      if (el) el.textContent = 'Searching iiitdwd.ac.in for "' + query + '"… 🌐';
-    }
-
     function addError(text) {
       const div = document.createElement("div");
       div.className = "error-msg";
@@ -517,42 +478,32 @@
       sendBtn.disabled = true;
       const thinking = addThinking();
 
-      let stage1, stage2;
+      let stage1;
       try {
         // Send last 5 Q&A pairs as conversation context
         const history = loadHistory();
         const historyPayload = history.slice(-10);
 
-        // Staged thinking: Checking knowledge base -> Searching iiitdwd.ac.in
+        // Single stage: the Knowledge Base is the only source (ADR-0004)
         stage1 = setTimeout(() => {
           const el = document.getElementById("thinking");
           if (el) el.textContent = "Checking knowledge base…";
         }, 900);
-        stage2 = setTimeout(() => {
-          const el = document.getElementById("thinking");
-          if (el) {
-            const qShort = question.length > 60 ? question.slice(0,60) + "…" : question;
-            el.textContent = `Searching iiitdwd.ac.in for "${qShort}"… 🌐`;
-          }
-        }, 2600);
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: question, history: historyPayload }),
         });
         clearTimeout(stage1);
-        clearTimeout(stage2);
         thinking.remove();
         if (!res.ok) throw new Error("Server returned " + res.status);
         const data = await res.json();
-        const ws = { used: !!data.web_search_used, query: data.web_search_query || question, urls: data.web_sources || [], web_sources: data.web_sources || [] };
-        // pass KB sources separately; renderSourceTag will group web_search + KB
-        addBubble(data.answer, "bot", data.sources || [], ws);
+        const miss = { missed: !!data.missed, count: data.miss_count };
+        addBubble(data.answer, "bot", data.sources || [], miss);
         appendTurn({ role: "user", content: question });
         appendTurn({ role: "assistant", content: data.answer });
       } catch (err) {
         clearTimeout(stage1);
-        clearTimeout(stage2);
         try { thinking.remove(); } catch {}
         addError("Can't reach the assistant right now. Check your connection and try again.");
       } finally {

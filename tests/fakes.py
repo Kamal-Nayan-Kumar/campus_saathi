@@ -56,6 +56,61 @@ class FakeQueryEngine:
         self.last_query = user_query
         return "The central library is open from 9 AM to 8 PM on weekdays.", []
 
+
+class MissQueryEngine:
+    """Answers from the Knowledge Base miss — records the question, no web search."""
+
+    def __init__(self, miss_log):
+        self.miss_log = miss_log
+        self.last_query: str | None = None
+
+    def process_query(self, user_query: str, history=None) -> tuple[str, list, dict]:
+        self.last_query = user_query
+        entry = self.miss_log.record(user_query, "English")
+        return (
+            "I don't have that in the college documents yet.",
+            [],
+            {"missed": True, "query": user_query, "count": entry["count"] if entry else None},
+        )
+
+
+class FakeMissLog:
+    """In-memory MissLog so tests never touch data/misses.jsonl."""
+
+    def __init__(self):
+        self.rows: dict[str, dict] = {}
+
+    def record(self, query: str, language: str | None = None) -> dict | None:
+        if not (query or "").strip():
+            return None
+        key = " ".join(query.lower().split())
+        row = self.rows.get(key)
+        if row:
+            row["count"] += 1
+            return row
+        row = {
+            "key": key,
+            "query": query,
+            "language": language,
+            "count": 1,
+            "first_seen": "2026-01-01T00:00:00+00:00",
+            "last_seen": "2026-01-01T00:00:00+00:00",
+        }
+        self.rows[key] = row
+        return row
+
+    def list_misses(self, limit: int = 20) -> list[dict]:
+        rows = sorted(self.rows.values(), key=lambda r: r["last_seen"], reverse=True)
+        return rows[:limit]
+
+    def total_queries(self) -> int:
+        return sum(r["count"] for r in self.rows.values())
+
+    def clear(self) -> int:
+        n = len(self.rows)
+        self.rows.clear()
+        return n
+
     def __call__(self, *a, **kw):
         return self.process_query(*a, **kw)
 

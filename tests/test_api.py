@@ -4,7 +4,52 @@ External services (Groq, Qdrant, Firecrawl) are replaced by fakes injected
 into app.state; assertions target HTTP responses only.
 """
 
-from tests.fakes import BrokenQueryEngine
+from tests.fakes import BrokenQueryEngine, MissQueryEngine
+
+
+def test_chat_never_reports_a_web_search(client):
+    """ADR-0004: the Knowledge Base is the only source. No web-search fields."""
+    res = client.post("/api/chat", json={"message": "When does the library open?"})
+    body = res.json()
+    assert "web_search_used" not in body
+    assert "web_sources" not in body
+    assert "web_search_query" not in body
+    assert body["missed"] is False
+
+
+def test_chat_miss_is_logged_for_admin_not_answered_from_the_web(app, client):
+    app.state.query_engine = MissQueryEngine(app.state.miss_log)
+    res = client.post("/api/chat", json={"message": "what is in snacks today"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["missed"] is True
+    assert body["miss_count"] == 1
+    assert body["sources"] == []  # no scraped web content leaked in
+
+    listing = client.get("/api/admin/misses").json()
+    assert listing["total_queries"] == 1
+    assert listing["misses"][0]["query"] == "what is in snacks today"
+
+
+def test_repeated_miss_increments_count_once(app, client):
+    app.state.query_engine = MissQueryEngine(app.state.miss_log)
+    for _ in range(3):
+        client.post("/api/chat", json={"message": "what is in snacks today"})
+
+    listing = client.get("/api/admin/misses").json()
+    assert len(listing["misses"]) == 1  # deduplicated
+    assert listing["misses"][0]["count"] == 3
+    assert listing["total_queries"] == 3
+
+
+def test_clearing_misses_empties_the_log(app, client):
+    app.state.query_engine = MissQueryEngine(app.state.miss_log)
+    client.post("/api/chat", json={"message": "what is in snacks today"})
+
+    res = client.delete("/api/admin/misses")
+    assert res.status_code == 200
+    assert res.json()["entries"] == 1
+    assert client.get("/api/admin/misses").json()["misses"] == []
 
 
 def test_chat_returns_answer(client):

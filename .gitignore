@@ -29,3 +29,6 @@ tests/fixtures/rag_real_scores.csv
 !docs/README-rag-eval.md
 docs/agents/
 docs/adr/
+
+# Miss log (ADR-0004)
+data/
