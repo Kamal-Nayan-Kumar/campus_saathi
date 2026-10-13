@@ -31,36 +31,63 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_OPENROUTER_MODEL = "openrouter/free"
 
-# phrases that indicate the LLM found no answer in the provided context
+# English grammar words — presence of any means an ASCII query is real English.
+# Deliberately excludes topic nouns (fee, semester, hostel, ...) because Hinglish
+# reuses them ("3rd semester ki fees kitni hai?"). Absence of a grammar word
+# means the query must go through the LLM translator instead of the fast path.
+_ENGLISH_MARKERS = {
+    "the", "is", "are", "was", "were", "am", "be", "been", "being",
+    "what", "when", "where", "who", "whom", "whose", "how", "why", "which",
+    "does", "do", "did", "can", "could", "would", "should", "will", "shall",
+    "may", "might", "must", "have", "has", "had", "having",
+    "this", "that", "these", "those", "there", "here",
+    "and", "or", "but", "nor", "not", "no",
+    "for", "with", "about", "from", "into", "onto", "upon", "of", "at", "in",
+    "on", "to", "by", "as", "than", "then",
+    "your", "you", "yours", "my", "mine", "me", "our", "ours", "we", "us",
+    "he", "she", "they", "them", "his", "her", "their", "its", "it",
+    "tell", "show", "give", "find", "know", "please",
+}
+
+# High-precision phrases that mean "I could not answer from the context".
+# Deliberately narrow: loose phrases like "general note", "provided information",
+# "only mentions", "not provided" appear in perfectly good answers (e.g. a
+# mess-menu reply that references "Note 1"), so they must NOT be here.
 _MISSING_PHRASES = [
-    "does not include",
-    "doesn't include",
-    "does not contain",
-    "doesn't contain",
-    "not include",
-    "not contain",
-    "not provided",
-    "are not provided",
-    "is not provided",
-    "missing from the context",
-    "not in the provided context",
-    "not in the context",
-    "no information",
-    "no specific information",
-    "no specific",
-    "no relevant",
-    "couldn't find",
-    "could not find",
-    "not available",
-    "not found",
-    "don't have",
-    "do not have",
-    "is not available",
-    "provided information",
-    "information you shared",
-    "sorry, but",
-    "only mentions",
-    "general note",
+    # explicit inability
+    "i don't have",
+    "i do not have",
+    "i couldn't find",
+    "i could not find",
+    "i am unable to",
+    "i'm unable to",
+    "i cannot answer",
+    "i can't answer",
+    "unable to find",
+    "unable to provide",
+    "cannot be answered from",
+    "can't be answered from",
+    # context explicitly lacks it
+    "the context does not",
+    "the provided context does not",
+    "the context doesn't",
+    "the provided context doesn't",
+    "not mentioned in",
+    "is not mentioned",
+    "are not mentioned",
+    "no information about",
+    "no specific information about",
+    "not available in the",
+    "not found in",
+    "outside my",
+    "not within",
+    "beyond my",
+    "i don't have enough",
+    "i do not have enough",
+    "i'm sorry, but i don't",
+    "i am sorry, but i don't",
+    "i'm sorry, but i could not",
+    "i am sorry, but i could not",
 ]
 
 TRANSLATE_PROMPT = ChatPromptTemplate.from_messages(
@@ -95,10 +122,16 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 
 class QueryEngine:
     def __init__(self, knowledge_base, miss_log=None):
-        # Prefer OpenRouter if key present, else Groq — keeps backward compat
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        # Prefer Groq (documented default + reliable), else OpenRouter.
+        # LLM_MODEL overrides the model in either case.
         groq_key = os.getenv("GROQ_API_KEY")
-        if openrouter_key:
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if groq_key:
+            api_key = groq_key
+            base_url = os.getenv("GROQ_BASE_URL", GROQ_BASE_URL)
+            model = os.getenv("LLM_MODEL", DEFAULT_GROQ_MODEL)
+            default_headers = None
+        elif openrouter_key:
             api_key = openrouter_key
             base_url = os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL)
             model = os.getenv("LLM_MODEL", DEFAULT_OPENROUTER_MODEL)
@@ -107,11 +140,6 @@ class QueryEngine:
                 "HTTP-Referer": os.getenv("OPENROUTER_REFERRER", "https://campus-saathi.local"),
                 "X-Title": os.getenv("OPENROUTER_TITLE", "Campus Saathi"),
             }
-        elif groq_key:
-            api_key = groq_key
-            base_url = os.getenv("GROQ_BASE_URL", GROQ_BASE_URL)
-            model = os.getenv("LLM_MODEL", DEFAULT_GROQ_MODEL)
-            default_headers = None
         else:
             raise ValueError("OPENROUTER_API_KEY or GROQ_API_KEY must be set in environment variables")
 
@@ -135,13 +163,7 @@ class QueryEngine:
 
     def _is_missing_answer(self, answer: str) -> bool:
         low = (answer or "").lower().replace("’", "'").replace("‘", "'").replace("`", "'")
-        if any(phrase in low for phrase in _MISSING_PHRASES):
-            if low.count("provided information") and not any(
-                neg in low for neg in ["does not", "doesn't", "doesn", "not include", "not contain", "missing", "sorry", "not available", "not found", "couldn"]
-            ):
-                return False
-            return True
-        return False
+        return any(phrase in low for phrase in _MISSING_PHRASES)
 
     def _not_found_message(self, language: str, current_date: str) -> str:
         """Honest miss, in the student's language. No promise of a web search."""
@@ -164,6 +186,28 @@ class QueryEngine:
                 pass
         return msg
 
+    def _optimize_query(self, query: str) -> str:
+        """Strip generic filler so retrieval ranks on topic words, not phrasing.
+
+        A wordy translation ("Tell me the fee for the 3rd semester, buddy")
+        pushes the actual table chunk out of the top-k. Removing filler keeps
+        the signal dense. Generic — no hardcoded topic list, so it works for
+        fee, mess, bus, hostel, anything.
+        """
+        filler = {
+            "tell", "me", "about", "please", "can", "you", "could", "would",
+            "what", "is", "the", "for", "this", "that", "a", "an", "give",
+            "show", "i", "want", "to", "know", "details", "information", "of",
+            "on", "in", "my", "we", "us", "buddy", "yaar", "bhai", "hey",
+            "hi", "hello", "kindly", "just", "need", "and", "or", "how",
+            "much", "many", "does", "do", "are", "there", "any",
+        }
+        tokens = [
+            t for t in re.split(r"[^a-z0-9]+", query.lower())
+            if t and t not in filler
+        ]
+        return " ".join(tokens) if tokens else query.strip()
+
     def process_query(self, user_query: str, history: list[dict] = None) -> tuple[str, list[str], dict]:
         """
         Returns (answer, sources, miss) where miss is
@@ -174,9 +218,12 @@ class QueryEngine:
             # Step 1: detect language and translate to English
             english_query, language = self._translate(user_query)
 
-            # Step 2: retrieve context from the Knowledge Base with sources
+            # Step 2: retrieve context from the Knowledge Base with sources.
+            # Optimize the translated query (drop filler) and use a wider limit —
+            # a wordy translation otherwise pushes the real chunk out of top-5.
+            english_query = self._optimize_query(english_query)
             context_chunks, source_filenames = self.knowledge_base.search_with_sources(
-                english_query[:1000]
+                english_query[:1000], limit=8
             )
 
             # Build conversation context from recent history (last 5 pairs)
@@ -249,13 +296,15 @@ class QueryEngine:
 
     def _translate(self, user_query: str) -> tuple[str, str]:
         """Returns (english_query, detected_language); falls back to the original."""
-        # Fast path: skip LLM for plain ascii English (saves ~1.5s, fixes "time bahut lag rha").
-        # Generic — no hardcoded topic list. If text is ascii, assume English.
+        # Fast path: skip LLM for plain English (saves ~1.5s, fixes "time bahut lag rha").
+        # ASCII is NOT enough to assume English — Hinglish ("3rd semester ki fees
+        # kitni hai?") is also ASCII. Require at least one English function word.
         try:
             stripped = user_query.strip()
             if stripped and re.match(r"^[\x00-\x7F]+$", stripped) and len(stripped) <= 300:
-                # ascii-only queries are English (Hindi/other scripts would be unicode)
-                return user_query, "English"
+                tokens = set(re.findall(r"[a-z]+", stripped.lower()))
+                if tokens & _ENGLISH_MARKERS:
+                    return user_query, "English"
         except Exception:
             pass
         try:
